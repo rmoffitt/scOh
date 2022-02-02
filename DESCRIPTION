@@ -1,0 +1,16 @@
+Package: scOH
+Title: Integrated Single Cell PDAC Analysis
+Version: 0.0.0.9000
+Authors@R: 
+    person(given = "Ki",
+           family = "Oh",
+           role = c("aut", "cre"),
+           email = "first.last@example.com",
+           comment = c(ORCID = "YOUR-ORCID-ID"))
+Description: Data Repository for Single Cell PDAC Analysis (one paragraph).
+License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
+    license
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.1.1
