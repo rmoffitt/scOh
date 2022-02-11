@@ -30,7 +30,7 @@ library(dplyr)
 ## change Seurat into dgCMatrix.
 
 # Load Classifier
-Kiclassifier <- readRDS("~/mouse/For_Ki/PDAC_Tier1_Classifier_MouseOverlap5000.40pairs.rds")
+Classifier <- readRDS("~/mouse/For_Ki/PDAC_Tier1_Classifier_MouseOverlap5000.40pairs.rds")
 
 # set Query data
 ## this is how to grab Large dgCMatrix from Seurat Object
