@@ -30,7 +30,7 @@ library(dplyr)
 ## change Seurat into dgCMatrix.
 
 # Load Classifier
-Classifier <- readRDS("~/mouse/For_Ki/PDAC_Tier1_Classifier_MouseOverlap5000.40pairs.rds")
+Classifier <- readRDS("~/data/PDAC_Tier1_Classifier_MouseOverlap5000.40pairs.rds")
 
 # set Query data
 ## this is how to grab Large dgCMatrix from Seurat Object
@@ -43,9 +43,9 @@ expMouse <- pseudo_GEMMs@assays$RNA[]
 
 ```r
 ## add random 
-# more detail description is on SingelCellNet github :
+# More detail description is on SingelCellNet github: https://github.com/pcahan1/singleCellNet  
 nqRand = 0
-system.time( crParkall <- scn_predict(Kiclassifier[['cnProc']], expMouse, nrand = nqRand))
+system.time( crParkall <- scn_predict(Classifier[['cnProc']], expMouse, nrand = nqRand))
 ```
 
 
