@@ -6,33 +6,29 @@ output: html_document
 #### **Required Installation**
 ```{r}
 install.packages("singlecellnet")
+library(singleCellNet)
+library(dplyr)
 ```
 
 #### **Quick Start** 
 ```{r}
-library(singleCellNet)
-library(dplyr)
-## Convert Seurat data into dgCMatrix.
-
 # Load Classifier
 Classifier <- readRDS("~/data/PDAC_Tier1_Classifier_MouseOverlap5000.40pairs.rds")
 
 # set Query data
-## this is how to grab Large dgCMatrix from Seurat Object
+## Convert Seurat data into dgCMatrix.
 stMouse <- pseudo_GEMMs@meta.data
 stMouse$sample_name <- rownames(stMouse)
-expMouse <- pseudo_GEMMs@assays$RNA[]
+expMouse <- pseudo_GEMMs@assays$RNA
 ```
 
-
-
+### Predict Cell Type
 ```{r}
 ## add random 
-# More detail description is on SingelCellNet github: https://github.com/pcahan1/singleCellNet  
+# More detail description is on SingleCellNet github: https://github.com/pcahan1/singleCellNet  
 nqRand = 0
 system.time( crParkall <- scn_predict(Classifier[['cnProc']], expMouse, nrand = nqRand))
 ```
-
 
 #### **Visualize Classifier Results**
 ```{r}
