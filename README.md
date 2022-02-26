@@ -1,6 +1,7 @@
 ## Single Cell Atlas - PDAC 
 ### Integrated Analysis of the Tumor Microenvironment (TME)
-Repo
+Supplementary repository of data, analysis and code.
+Moffitt Lab
 ***
 ### Overview of Repository
 #### 1). **PDAC Atlas Data**   
