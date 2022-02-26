@@ -8,11 +8,11 @@ Supplementary repository of data, analysis and code.
     * Pan-TME Secretome Expression 
     * Pan-TME Cell-Contact Expression     
     * Subpopulation Differential Gene Markers
-    * Subpopulation Gene Set Enrichment Output   
+    * Subpopulation Gene-Set Enrichment Output   
      
 ### 2). **Subtype Dependent Secretome Expression Data**
-    * Stroma-Dependent Compartment Change
-    * Tumor-Depdendent Compartment Change  
+    * Stroma-Dependent Change
+    * Tumor-Dependent Change  
 
 
 ### 3). **Single Cell Classifier**
