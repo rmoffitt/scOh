@@ -9,6 +9,7 @@ Supplementary repository of data, analysis and code.
     * Pan-TME Cell-Contact Expression     
     * Subpopulation Differential Gene Markers
     * Subpopulation Gene-Set Enrichment Output   
+    * Expanded gene signature table
      
 ### 2). **Subtype Dependent Secretome Expression Data**
     * Stroma-Dependent Change
