@@ -1,0 +1,472 @@
+---
+title: "CrossTMECorrelation"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Load Packages / Functions
+```{r}
+library(Seurat)
+library(pheatmap)
+library(ggplot2)
+library(tidygraph)
+library(ggraph)
+library(corrr)
+library(tidyverse)
+options(ggrepel.max.overlaps = Inf)
+
+gene_lists <- readRDS("/premDisk/khoh/Github/scTME/data/gene_lists.rds")
+source('/premDisk/khoh/Github/scTME/R/score_sig.R', echo=TRUE)
+source('/premDisk/khoh/Github/scTME/R/pseudobulk_score.R', echo=TRUE)
+source('/premDisk/khoh/Github/scTME/R/dist2order.R', echo=TRUE)
+source('/premDisk/khoh/Github/scTME/R/pseudobulk.R', echo=TRUE)
+source('/premDisk/khoh/Github/scTME/R/pseudobulk_all.R', echo=TRUE)
+```
+
+# Load Cell Type 1 Subsets and Filter down / Simplify
+```{r}
+Stroma <- readRDS("/premDisk/khoh/Github/scTME/data/subset/Stroma_Subset2021.rds")
+Stroma2<-subset(Stroma,Condition%in%"Tumor")
+Stroma2<-subset(Stroma2,CellType2%in%c("qPSC","smPSC","iCAF","Schwann","myCAF","csCAF"))
+#-----------------------------------------------
+Myeloid <- readRDS("/premDisk/khoh/Github/scTME/data/subset/Myeloid_Subset2021.rds")
+Myeloid2<-subset(Myeloid,Condition%in%"Tumor")
+#-----------------------------------------------
+Endo <- readRDS("/premDisk/khoh/Github/scTME/data/subset/Endo_Subset2021.rds")
+Endo2<-subset(Endo,Condition%in%"Tumor")
+Endo2$note<-"OK"
+#-----------------------------------------------
+Lympho <- readRDS("/premDisk/khoh/Github/scTME/data/subset/Lymphocytes_Subset2021.rds")
+Lympho2<-subset(Lymphocytes,Condition%in%"Tumor")
+Lympho2$note<-"OK"
+#-----------------------------------------------
+Epi <- readRDS("/premDisk/khoh/Github/scTME/data/subset/Epi_Subset2021.rds")
+Epi2<-subset(Epi,Condition%in%"Tumor")
+Epi2$CellType2[Epi2$CellType2%in%"EMT.Duct"]<-"Neoplastic"
+Epi2$CellType2[Epi2$CellType2%in%"HSP.Duct"]<-"Normal.Duct"
+Epi2<-subset(Epi2,CellType2%in%c("Normal.Duct","Neoplastic","Metaplastic","Acinar"))
+Epi2$note<-"OK"
+```
+
+##@  Stroma Pseudobulk + Prep df
+```{r}
+#Pseudo-bulk each patient's stroma
+newdf<-pseudobulk(Stroma2)
+#Score Signatures for Each Patient thru gene_lists
+samples<-pseudobulk_score(newdf)
+#==================================================
+#create dataframes
+genes<-samples[[2]]
+expression<-samples[[3]]
+samples<-samples[[1]]
+#=======================
+# Total Stroma %
+samples$StromaPercent<-as.numeric(table(Stroma2$Patient)/table(PDACTrainingSet$Patient)[c(5,6,18:41)])*100
+#=======================
+# CellType2 % = [CellType2]/Stroma 
+x<-table(Stroma2$CellType2,Stroma2$Patient)
+y<-as.vector(table(Stroma2$Patient))
+prop<-round(t(x)/y,4)*100
+#====================================================
+samples$qPSC.p<-prop[,3]
+samples$smPSC.p<-prop[,4]
+samples$iCAF.p<-prop[,5]
+samples$Schwann.p<-prop[,6]
+samples$myCAF.p<-prop[,7]
+samples$csCAF.p<-prop[,8]
+stromasamples<-samples
+#====================================================
+rm(Stroma)
+```
+
+##@ Myeloid proportions
+```{r}
+#==================================================
+#Pseudo-bulk each patient's stroma
+newdf<-pseudobulk(Myeloid2)
+#Score Signatures for Each Patient thru gene_lists
+samples<-pseudobulk_score(newdf)
+#==================================================
+#create dataframes
+genes<-samples[[2]]
+expression<-samples[[3]]
+samples<-samples[[1]]
+#=======================
+# Total Myeloid %
+samples$MyeloidPercent<-as.numeric(table(Myeloid2$Patient)/table(PDACTrainingSet$Patient)[c(5,6,18:41)])*100
+#=======================
+# CellType2 % = [CellType2]/Myeloid 
+x<-table(Myeloid2$CellType2,Myeloid2$Patient)
+y<-as.vector(table(Myeloid2$Patient))
+prop<-round(t(x)/y,4)*100
+#=======================================
+samples$LAMP3.DC<-prop[,1]
+samples$ResidentMac<-prop[,2]
+samples$mDC<-prop[,3]
+samples$ClassicalMono<-prop[,4]
+samples$FSIP2.TAM<-prop[,5]
+samples$SPP1.TAM<-prop[,6]
+samples$GRN.TAM<-prop[,7]
+myeloidsamples<-samples
+#===========================================
+rm(Myeloid)
+```
+
+##@ Endo Proportions
+```{r}
+#==================================================
+#Pseudo-bulk each patient's stroma
+newdf<-pseudobulk(Endo2)
+#Score Signatures for Each Patient thru gene_lists
+samples<-pseudobulk_score(newdf)
+#==================================================
+#create dataframes
+genes<-samples[[2]]
+expression<-samples[[3]]
+samples<-samples[[1]]
+#=======================
+# Total Myeloid %
+samples$EndoPercent<-as.numeric(table(Endo2$Patient)/table(PDACTrainingSet$Patient)[c(5,6,18:41)])*100
+#samples$MyeloidPercent<-as.numeric(table(Myeloid2$Patient)/table(PDACTraining$Patient))*100
+#=======================
+# CellType2 % = [CellType2]/Endo 
+x<-table(Endo2$CellType2,Endo2$Patient)
+y<-as.vector(table(Endo2$Patient))
+prop<-round(t(x)/y,4)*100
+#=======================================
+samples$TIP.EC<-prop[,1]
+samples$MT1X.EC<-prop[,2]
+samples$Venous.EC<-prop[,3]
+samples$Arterial.EC<-prop[,4]
+samples$EHT.EC<-prop[,5]
+endosamples<-samples
+#=========================================
+rm(Endo)
+```
+
+##@ Lympho Proportions
+```{r}
+#==================================================
+#Pseudo-bulk each patient's stroma
+newdf<-pseudobulk(Lympho2)
+#Score Signatures for Each Patient thru gene_lists
+samples<-pseudobulk_score(newdf)
+#==================================================
+#create dataframes
+genes<-samples[[2]]
+expression<-samples[[3]]
+samples<-samples[[1]]
+#=======================
+# Total Myeloid %
+samples$LymphPercent<-as.numeric(table(Lympho2$Patient)/table(PDACTrainingSet$Patient)[c(5,6,18:41)])*100
+#=======================
+# CellType2 % = [CellType2]/Lympho 
+x<-table(Lympho2$CellType2,Lympho2$Patient)
+y<-as.vector(table(Lympho2$Patient))
+prop<-round(t(x)/y,4)*100
+#=======================================
+samples$Plasma<-prop[,1]
+samples$Prolif.Lymph<-prop[,2]
+samples$Early.CD8<-prop[,3]
+samples$Dysfunctional.CD8<-prop[,4]
+samples$Progen.Lymph<-prop[,5]
+samples$Cytotoxic.CD8<-prop[,6]
+samples$T.Reg<-prop[,7]
+samples$Mem.B<-prop[,8]
+samples$Naive.CD4<-prop[,9]
+samples$Immature.B<-prop[,10]
+lymphosamples<-samples
+#====================================================
+rm(Lymphocytes)
+```
+
+##@ Epi Proportions
+```{r}
+#==================================================
+#Pseudo-bulk each patient's stroma
+newdf<-pseudobulk(Epi2)
+#Score Signatures for Each Patient thru gene_lists
+samples<-pseudobulk_score(newdf)
+#==================================================
+#create dataframes
+genes<-samples[[2]]
+expression<-samples[[3]]
+samples<-samples[[1]]
+#=======================
+# Total Myeloid %
+samples$EpiPercent<-as.numeric(table(Epi2$Patient)/table(PDACTrainingSet$Patient)[c(5,6,18:41)])*100
+#=======================
+# CellType2 % = [CellType2]/Epi 
+x<-table(Epi2$CellType2,Epi2$Patient)
+y<-as.vector(table(Epi2$Patient))
+prop<-round(t(x)/y,4)*100
+#=======================================
+samples$Normal.Duct<-prop[,1]
+samples$Neoplastic<-prop[,2]
+samples$Metaplastic<-prop[,3]
+samples$Acinar<-prop[,4]
+episamples<-samples
+#====================================================
+rm(Epi)
+```
+
+
+# Find Highest signature expressing cell type
+```{r}
+# Major PDAC related Signatures tend to have appropriate and relevant cell types which it tends to describe. Other signatures are not as clear. Here we use a coarse selection to pick the cell compartment used to derive the signature score.  
+#=========================================
+list<-c("PD1.Signaling","TEM","TNF.Signaling","IFNG_Response","DAP12","Th17diff","APP","IL17.Signaling","JakStat.Signaling","HH.Signaling","Notch.Signaling","Est.Signaling","Oxy.Signaling","VEGF.Signaling","WNT.Signaling","TGFB.Production","IFNG_Production","IFNG_Secretion","TGFB.GO1903846","EMT","NFkb_Up","NFkb_Down","mesenchymal","Puram_hypoxia","Glycolytic","OXA_resistant","OXA_sensitive","FiveFU_resistant","GEM_sensitive","GEM_resistant","FiveFU_sensitive","PAC_resistant","PAC_sensitive","Sphingo","central.panc","peripheral.panc","peripheral.panc","MT","ribosomal","Puram_epi.diff","TGFB.Signaling","SphingoSig","p53","Senescence","Ras","p53","MAPK","PPAR","ErbB","PI3K_Akt","NKCytotoxic","HIF1","NfkbSig","MMP","IL4Sig","IL3Sig","IL2Sig","TILbc","TILPred","TILcc","crossPres","oxphos","ppp","comp","ret","tlr","mmRepair","beRepair","neRepair","cholesterol","lipid","IL10AntiInflam","ctla4Block","IL1Sig","IL6Sig","pd1_block","parathryoid","IL15Sig","splice","ubi","TCR","proteosome","TSLPSig","endothelin","insulinSig","EGFRSig","IL18Sig","IL23Sig","IL20Sig")
+for(i in list){
+  print(i)
+    print(paste0("- Stroma: ",sum(stromasamples[,i])))
+  print(paste0("- Myeloid: ",sum(myeloidsamples[,i])))
+  print(paste0("- Lympho: ",sum(lymphosamples[,i])))
+  print(paste0("- Endo: ",sum(endosamples[,i])))
+  print(paste0("- Epi: ",sum(episamples[,i])))
+}
+```
+
+#===========================================================
+##~ Corr Matrix - Scores Only
+```{r}
+# Create Unique Duplicates for signatures from more than 1 cell type
+# Helpful if there are more than 1 major contributors to a signature
+#TGFB.Signaling (Stroma,Endo)
+stromasamples$s_TGFB.Signaling<-stromasamples$TGFB.Signaling
+endosamples$endo_TGFB.Signaling<-endosamples$TGFB.Signaling
+#TGFB.GO1903846 (Stroma,Endo)
+stromasamples$s_TGFB.GO1903846<-stromasamples$TGFB.GO1903846
+endosamples$endo_TGFB.GO1903846<-endosamples$TGFB.GO1903846
+#TGFB Production (Endo, Epi)
+episamples$epi_TGFB.Production<-episamples$TGFB.Production
+endosamples$endo_TGFB.Production<-endosamples$TGFB.Production
+# oxy (Stroma, Endo)
+stromasamples$s_Oxy.Signaling<-stromasamples$Oxy.Signaling
+endosamples$endo_Oxy.Signaling<-endosamples$Oxy.Signaling
+# IL17 Signaling (Myeloid, Epi)
+myeloidsamples$m_IL17.Signaling<-myeloidsamples$IL17.Signaling
+episamples$epi_IL17.Signaling<-episamples$IL17.Signaling
+# APP (Myeloid, Lympho)
+myeloidsamples$m_APP<-myeloidsamples$APP
+lymphosamples$l_APP<-lymphosamples$APP
+endosamples$endo_APP<-endosamples$APP
+#th17diff (lympho,myeloid)
+myeloidsamples$m_Th17diff<-myeloidsamples$Th17diff
+lymphosamples$l_Th17diff<-lymphosamples$Th17diff
+#pd1 signaling (lympho,myeloid)
+myeloidsamples$m_PD1.Signaling<-myeloidsamples$PD1.Signaling
+lymphosamples$l_PD1.Signaling<-lymphosamples$PD1.Signaling
+stromasamples$s_PD1.Signaling<-stromasamples$PD1.Signaling
+episamples$epi_PD1.Signaling<-episamples$PD1.Signaling
+#mmp signaling (epi,stroma)
+episamples$epi_MMP<-episamples$MMP
+stromasamples$s_MMP<-stromasamples$MMP
+#il4 (myeloid,endo)
+myeloidsamples$m_IL4Sig<-myeloidsamples$IL4Sig
+endosamples$endo_IL4Sig<-endosamples$IL4Sig
+#nfkbsig signaling (lympho,myeloid)
+myeloidsamples$m_NfkbSig<-myeloidsamples$NfkbSig
+lymphosamples$l_NfkbSig<-lymphosamples$NfkbSig
+#pi3kakt signaling (stroma,endo)
+stromasamples$s_PI3K_Akt<-stromasamples$PI3K_Akt
+endosamples$endo_PI3K_Akt<-endosamples$PI3K_Akt
+#erbb (endo/epi)
+endosamples$endo_ErbB<-endosamples$ErbB
+episamples$epi_ErbB<-episamples$ErbB
+#ras (endo/epi)
+endosamples$endo_Ras<-endosamples$Ras
+episamples$epi_Ras<-episamples$Ras
+#EMT (endo/epi)
+endosamples$endo_EMT<-endosamples$EMT
+episamples$epi_EMT<-episamples$EMT
+#sphingosig (myeloid,endo)
+myeloidsamples$m_SphingoSig<-myeloidsamples$SphingoSig
+endosamples$endo_SphingoSig<-endosamples$SphingoSig
+#DAP12 signaling (lympho,myeloid)
+myeloidsamples$m_DAP12<-myeloidsamples$DAP12
+lymphosamples$l_DAP12<-lymphosamples$DAP12
+#ifng response (myeloid,endo)
+myeloidsamples$m_IFNG_Response<-myeloidsamples$IFNG_Response
+lymphosamples$l_IFNG_Response<-lymphosamples$IFNG_Response
+episamples$epi_IFNG_Response<-episamples$IFNG_Response
+#ret signaling (epi,stroma)
+episamples$epi_ret<-episamples$ret
+stromasamples$s_ret<-stromasamples$ret
+#oxphos signaling (epi,stroma)
+episamples$epi_oxphos<-episamples$oxphos
+stromasamples$s_oxphos<-stromasamples$oxphos
+lymphosamples$l_oxphos<-lymphosamples$oxphos
+#oxphos signaling (epi,stroma)
+episamples$epi_Glycolytic<-episamples$Glycolytic
+lymphosamples$l_Glycolytic<-lymphosamples$Glycolytic
+#il6 signaling (stroma,endo)
+stromasamples$s_IL6Sig<-stromasamples$IL6Sig
+endosamples$endo_IL6Sig<-endosamples$IL6Sig
+#TSLP signaling (myeloid,lympho)
+myeloidsamples$m_TSLPSig<-myeloidsamples$TSLPSig
+lymphosamples$l_TSLPSig<-lymphosamples$TSLPSig
+#comp signaling (myeloid,lympho)
+myeloidsamples$m_comp<-myeloidsamples$comp
+stromasamples$s_comp<-stromasamples$comp
+#===========================================================
+# Stroma
+a1<-c("Moffitt.Normal.25","Moffitt.Activated.25","Tuveson_iCAF","Tuveson_myCAF","s_TGFB.GO1903846","Puram_hypoxia","mesenchymal","s_TGFB.Signaling","s_PI3K_Akt","s_MMP")
+#=======================================================================================
+# Myeloid
+b1<-c("CIBERSORT.Monocytes","CIBERSORT.Macrophages.M0","CIBERSORT.Macrophages.M1","CIBERSORT.Macrophages.M2","Tuveson_AlternativeMac","Tuveson_ConventionalDC","Tuveson_ClassicalMonocyte","m_IL17.Signaling","m_IFNG_Response","IL3Sig","m_NfkbSig","PPAR","tlr","IL1Sig","IL10AntiInflam","m_TSLPSig","m_comp","IL18Sig")
+#=======================================================================================
+# Epi
+c1<-c("Moffitt.Basal.25","Moffitt.Classical.25","epi_TGFB.Production","Califano_Lineage","Califano_Morpho","Califano_OP","Pei_ADM","RaghavanIntermediate","Puleo.PureBasal","Puleo.StromaActivated","Puleo.PureClassical","Puleo.ImmuneClassical","epi_EMT","HH.Signaling","Est.Signaling","NFkb_Up","PAC_sensitive","FiveFU_sensitive","GEM_sensitive","Puram_epi.diff","epi_IL17.Signaling","RaghavanBasal","RaghavanClassical","epi_MMP","epi_Ras","neRepair","mmRepair","beRepair","epi_ret","ppp","epi_oxphos","lipid","cholesterol","epi_Glycolytic","epi_IFNG_Response")
+#=======================================================================================
+# Lympho
+d1<-c("IFNG_Production","IFNG_Secretion","Puram_T.reg","TEM","l_PD1.Signaling","l_DAP12","l_Th17diff","IL2Sig","l_NfkbSig","NKCytotoxic","TILbc","l_APP","TCR","IL15Sig","IL23Sig")
+#=======================================================================================
+# Endo
+e1<-c("TNF.Signaling","Notch.Signaling","JakStat.Signaling","VEGF.Signaling","Sphingo","endo_TGFB.GO1903846","endo_TGFB.Production","endo_IL4Sig","MAPK","Senescence","endo_APP","endo_Ras","NFkb_Down","endo_IL6Sig","EGFRSig","insulinSig","endo_EMT")
+#=======================================================================================
+df<-cbind(stromasamples[,a1],
+          myeloidsamples[,b1],
+          episamples[,c1],
+          lymphosamples[,d1],
+          endosamples[,e1])
+M<-cor((df))
+#======================================== Label Where calculation came from
+met<-data.frame(Ident=colnames(M))
+#==============================================================================
+met$CellType1<-NULL
+met$CellType1[met$Ident%in%a1]<-"Stroma"
+met$CellType1[met$Ident%in%b1]<-"Myeloid"
+met$CellType1[met$Ident%in%c1]<-"Epithelium"
+met$CellType1[met$Ident%in%d1]<-"Lymphocytes"
+met$CellType1[met$Ident%in%e1]<-"Endo"
+#===================================================================
+library(pheatmap)
+row.names(met) <-met$Ident
+met$OG<-gsub("epi_","",met$Ident)
+met$OG<-gsub("endo_","",met$OG)
+met$OG<-gsub("m_","",met$OG)
+met$OG<-gsub("l_","",met$OG)
+met$OG<-gsub("epi_","",met$OG)
+met$Length<-lengths(gene_lists[met$OG])
+#======================================= #CorrPlot
+testRes = cor.mtest(df, conf.level = 0.95)
+#========================================
+#Figure
+tmp<-corrplot(M, method = 'color', order = 'FPC', 
+         type = 'full',#hclust.method="average",
+         p.mat = testRes$p,
+          sig.level = c(0.05),
+        cl.pos = 'b', 
+         insig = "label_sig",
+         pch.cex = 0.4,
+         diag = FALSE,tl.cex = 0.5,colorRampPalette(c("blue1","white","red1"))(300))
+print(tmp)
+# pheatmaps
+pheatmap(M[rownames(tmp$corr),rownames(tmp$corr)],  annotation_col = met[c(2,4)],annotation_row = met[c(2,4)],cutree_rows = 2,cutree_cols = 2,fontsize = 6,cluster_rows = F,cluster_cols = F,color=colorRampPalette(c("blue", "white", "red"))(100))
+# Network Plots
+#Figure 5S
+corrNetwork(M,threshold = 0.7,layout="fr")
+#=======================================================================
+#Filtered Version for clean 
+summary(rowSums(abs(M)))
+ex<-colnames(M)[which(colSums(abs(M))<20.26)]
+
+unlist(gene_lists[rownames(M)])
+filt<-rownames(M)[which(rowSums(abs(M))<20.26)]
+#filt<-filt[-c(1,2,3)]
+M2<-M[!rownames(M)%in%filt,!colnames(M)%in%filt]
+ tmp<-corrplot(M2, method = 'color', order = 'FPC', 
+         type = 'full',
+         p.mat = testRes$p,
+          sig.level = c(0.05),
+         cl.pos = 'n', 
+         insig = "label_sig",
+         pch.cex = 0.4,
+         diag = FALSE,tl.cex = 0.5,colorRampPalette(c("blue1","white","red1"))(300))
+#---------------------------
+pheatmap(M2[rownames(tmp$corr),rownames(tmp$corr)],  annotation_col = met[c(2,4)],annotation_row = met[c(2,4)],cutree_rows = 2,cutree_cols = 2,fontsize = 4,cluster_rows = F,cluster_cols = F,color=colorRampPalette(c("orange", "white", "blue"))(100))
+
+# Network
+#======================================== Label Where calculation came from
+corrNetwork(M,threshold = 0.8,layout="nicely")
+corrNetwork(M2,threshold = 0.75,layout="stressed")
+```
+
+## ~ Corr Matrix - Proportions Only
+```{r}
+options(ggrepel.max.overlaps = Inf)
+#Select variable cell populations and signatures
+#===========================================================
+# Stroma
+a2<-c("StromaPercent","qPSC.p","smPSC.p","Schwann.p","csCAF.p","myCAF.p","iCAF.p","Moffitt.F5_ActivatedStroma.top25","Moffitt.F13_NormalStroma.top25")
+#===========================================================
+# Myeloid
+b2<-c("ResidentMac","mDC","LAMP3.DC","FSIP2.TAM","GRN.TAM","SPP1.TAM","ClassicalMono")
+#===========================================================
+# Epithelium
+c2<-c("Metaplastic","Moffitt.Basal.25","Moffitt.Classical.25")
+#===========================================================
+# Lymphocytes
+d2<-c("T.Reg","Mem.B","Cytotoxic.CD8","Dysfunctional.CD8","Prolif.Lymph","LymphPercent","Plasma","Early.CD8","Immature.B","Progen.Lymph","Naive.CD4")
+#===========================================================
+# Endo
+e2<-c("MT1X.EC","Arterial.EC","EHT.EC","Venous.EC","TIP.EC")
+#======================================== Label what cell type calculation came from
+df<-cbind(stromasamples[,a2],
+          myeloidsamples[,b2],
+          episamples[,c2],
+          lymphosamples[,d2],
+          endosamples[,e2]
+          )
+M<-cor((df))
+#======================================== Label Where calculation came from
+met<-data.frame(Ident=colnames(M))
+#==============================================================================
+met$CellType1<-NULL
+met$CellType1[met$Ident%in%a2]<-"Stroma"
+met$CellType1[met$Ident%in%b2]<-"Myeloid"
+met$CellType1[met$Ident%in%c2]<-"Epithelium"
+met$CellType1[met$Ident%in%d2]<-"Lymphocytes"
+met$CellType1[met$Ident%in%e2]<-"Endo"
+#===================================================================
+row.names(met) <-met$Ident
+#=======================================# Pheatmap
+testRes = cor.mtest(df, conf.level = 0.95)
+
+#========================================
+# Fig
+  tmp<-corrplot(M, method = 'color', order = 'FPC', 
+         type = 'full',
+         p.mat = testRes$p,
+          sig.level = c(0.05),
+         cl.pos = 'b', 
+         insig = "label_sig",
+         pch.cex = 0.8,
+         diag = FALSE,tl.cex = 0.5,colorRampPalette(c("blue1","white","red1"))(300))
+print(tmp)
+pheatmap(M[rownames(tmp$corr),rownames(tmp$corr)],  annotation_col = met[2],annotation_row = met[2],cutree_rows = 2,cutree_cols = 2,fontsize = 4,cluster_rows = F,cluster_cols = F,color=colorRampPalette(c("blue", "white", "red"))(100))
+# Network Plot
+corrNetwork(M,threshold = 0.6,layout="nicely")
+#========================================  Filtered Version
+summary(rowSums(abs(M)))
+rownames(M)[which(rowSums(abs(M))<unname(quantile(rowSums(abs(M)))[1]))]
+filt<-rownames(M)[which(rowSums(abs(M))>unname(quantile(rowSums(abs(M)))[1]))]
+#which(colVars(M)<0.05)
+M2<-M[filt,filt]
+ tmp<-corrplot(M2, method = 'color', order = 'FPC', 
+         type = 'full',
+         p.mat = testRes$p,
+          sig.level = c(0.05),
+         cl.pos = 'b', 
+         insig = "label_sig",
+         pch.cex = 1,
+         diag = FALSE,tl.cex = 0.5,colorRampPalette(c("blue1","white","red1"))(300))
+#---------------------------
+pheatmap(M2[rownames(tmp$corr),rownames(tmp$corr)],  annotation_col = met[2],annotation_row = met[2],cutree_rows = 2,cutree_cols = 2,fontsize = 4,cluster_rows = F,cluster_cols = F,color=colorRampPalette(c("blue", "white", "red"))(100))
+# Network
+#======================================== 
+corrNetwork(M2,threshold = 0.6,layout="kk")
+#========================================
+```
+
