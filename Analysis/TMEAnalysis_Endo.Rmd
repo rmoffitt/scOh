@@ -1,0 +1,289 @@
+---
+title: "Data Processing"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+#Load Packages
+```{r}
+library(Seurat)
+library(harmony)
+library(Nebulosa)
+library(biomaRt)
+library(dplyr)
+gene_lists <- readRDS("/premiumDisk/khoh/Github/scTME/data/gene_lists.rds")
+source('/premiumDisk/khoh/Github/scTME/R/score_sig.R', echo=TRUE)
+```
+
+
+#@ Endo 
+```{r}
+high <- WhichCells(pancreas_merged, idents = c("Endothelium"))
+DimPlot(pancreas_merged,cells.highlight = high,reduction = "tsne") +NoLegend()         
+Endo<-subset(pancreas_merged,CellType1%in%c("Endothelium"))
+list_full<-SplitObject(Endo,split.by = "Dataset")
+
+int.features <- SelectIntegrationFeatures(object.list = list_full, nfeatures = 4000)
+Powers <- list_full$Powers
+list_full$Powers <- NULL
+Endo <- merge(Powers, y = c(list_full),  project = "Endothelium", merge.data = TRUE)
+VariableFeatures(Endo) <- int.features
+Endo <- RunPCA(object = Endo, assay = "SCT", npcs = 20)
+Endo <- RunHarmony(object = Endo,
+                                    assay.use = "SCT",
+                                    reduction = "pca",
+                                    dims.use = 1:20,
+                                    group.by.vars = c("Patient"),
+                                    plot_convergence = TRUE)
+ElbowPlot(Endo,ndims=20,reduction="harmony")
+Endo <- RunUMAP(object = Endo, assay = "SCT", 
+                   reduction = "harmony", 
+                   min.dist = 0.2,
+                local.connectivity = 20,
+                negative.sample.rate = 10,
+                   n.neighbors = 30,
+                   dims = 1:12)
+Endo <- FindNeighbors(object = Endo, assay = "SCT", reduction = "harmony", dims = 1:12)
+Endo <- FindClusters(object = Endo, resolution = 0.2)
+DimPlot(Endo,label=T)
+DimPlot(Endo,group.by="Dataset")
+FeaturePlot(Endo,features=c("FCER1A","AIF1","PRSS1","FXYD2","CPA2"),order=T,label=T)
+VlnPlot(Endo,features = c("FCER1A","FCGR3A","AIF1","PRSS1","TYROBP","CD163"),slot="data",assay = "RNA")
+VlnPlot(Endo,features = c("CPA2","FCGR3A","AIF1","PRSS1","TYROBP","CD163"),slot="data",assay = "RNA",group.by="Patient",sort=T)
+VlnPlot(Endo,features = c("CPA2","FXYD2","AIF1","PRSS1","TYROBP","CD163"),slot="data",assay = "SCT",group.by="Patient",sort=T)
+VlnPlot(Endo,features = c("CPA2","FXYD2","AIF1","PRSS1","TYROBP","CD163"),slot="counts",assay = "SCT",group.by="Patient",sort=T)
+Endo<-RunTSNE(Endo,dims=1:8,reduction = "harmony")
+DimPlot(Endo,label=T,reduction = "tsne")
+p2<-DimPlot(Endo,label=T,reduction = "umap")
+cowplot::plot_grid(p1,p2)
+plot_density(Endo, c("RGCC","COL4A1","MT1X","CPE","C7","ICAM2","CXCL12","PLPP3","CPA2","CD44"),size = 0.1,reduction = "umap")
+plot_density(Endo, c("HEY1","DKK2","HPGD","S100A4","LGALS3","PODXL","CD36","PLPP3","HEY1"),size = 0.1,reduction = "umap")
+VlnPlot(Endo,features = c("HEY1","IL33","AIF1","TSPAN7","GSN","INSR"),group.by="CellType2",sort=F)
+VlnPlot(Endo,features = c("TGFB1","IL33","AIF1","TSPAN7","GSN","INSR"),group.by="CellType2",sort=F)
+VlnPlot(Endo,features=c("ESM1","CA4","FBLN5","SELP","CD36","ACKR1","PDPN","IL1RL1","EDN1","MEF2D"),pt.size = 0)
+VlnPlot(Endo,features=c("ESM1","CA4","FBLN5","SELP","CD36","ACKR1","CD44","IL1RL1","EDN1","MT1X","GJA5","DCN","IL33","HEY1"),pt.size = 0.5)
+FeaturePlot(Endo,features=c("ESM1","CA4","FBLN5","SELP","CD36","ACKR1","CD44","IL1RL1","EDN1","MT1X","GJA5","NID2","IL33","HEY1","ADAMTS4","DCN"),order=T,label=T)
+```
+
+
+#>> Endo Heatmap
+```{r}
+Endo<-BuildClusterTree(Endo,dims=1:8,reorder = T)
+PlotClusterTree(Endo)
+table(Endo$seurat_clusters)
+Idents(Endo)<-"CellType2"
+small <- subset(Endo, downsample = 2000)
+DefaultAssay(small)<-"RNA"
+small<-NormalizeData(small)
+
+small<-ScaleData(small)#vars.to.regress = "Patient")
+fullmarkers <- FindAllMarkers(Endo,min.pct = 0.1,min.diff.pct = 0.1,test.use = "MAST",only.pos = T,logfc.threshold = 0.15)
+
+top10 <- fullmarkers %>% group_by(cluster) %>% top_n(n = 20, wt = avg_log2FC)
+toppval <- fullmarkers %>% group_by(cluster) %>% top_n(n = -20, wt = p_val_adj)
+#Idents(small)<-"seurat_clusters"
+DoHeatmap(small, features = top10$gene,label=T) + NoLegend()
+DoHeatmap(small, features = toppval$gene,label=T) + NoLegend()
+write.csv(fullmarkers , file = "EndoCellType2Markers.csv", row.names=FALSE)
+
+DoHeatmap(small, features = toppval$gene,label=T,slot="scale.data") + NoLegend()
+p1<-DimPlot(Endo,label=T,reduction = "tsne")
+p2<-DimPlot(Endo,label=T,reduction = "umap")
+cowplot::plot_grid(p1,p2)
+
+DimPlot(Endo,label=T)
+marker1 <- fullmarkers %>% group_by(cluster) %>% top_n(n = 2, wt = avg_log2FC)
+plot_density(Endo,features=marker1$gene,size = 0.1)
+plot_density(Endo, c("HEY1","DLL4","HPGD","S100A4","LGALS3","PODXL","CD44","PLPP3","HEY1","CLDN5","IRX3","NOTCH4"),size = 0.1,reduction = "umap",method="wkde")
+FeaturePlot(Endo,features=c("COL15A1","CXCL12","IL1R1","RGCC","MT1A","CD44","SOD3","HEY1","TGFB1"),order=T,label=T)
+
+new.cluster.ids <- 
+  c("Tip_EC", #0
+  "MT1X_EC", #1
+"Venous_EC",#2#
+"Arterial_EC",#3
+"EHT_EC")#4
+names(new.cluster.ids) <- levels(Endo)
+Endo <- RenameIdents(Endo, new.cluster.ids)
+Endo$CellType2<-Idents(Endo)
+DimPlot(Endo,label=T,group.by = "CellType2")
+#==========================================================
+#Set CellType2 Idents
+pancreas_merged$CellType2[colnames(Endo)]<-(as.character(Endo$CellType2))
+DimPlot(pancreas_merged,group.by=c("CellType1","CellType2"),order=T,label=T)
+DimPlot(pancreas_merged,group.by=c("CellType1","CellType2"),order=T,label=T,reduction = "tsne")
+#saveRDS(Endo,"Endo_Subset2021.rds")
+```
+
+#>> Endo GSEA
+```{r}
+library(clusterProfiler)
+source('/premiumDisk/khoh/Github/scTME/R/convert_symbol_entrez.R', echo=TRUE)
+#=========================
+gsea<-NULL
+Idents(Endo)<-"CellType2"
+fullmarkers <- FindAllMarkers(Endo,min.pct = 0.1,min.diff.pct = 0.1,test.use = "MAST",only.pos = T)
+#=========================
+gsea<-NULL
+for (i in unique(Endo$CellType2)){
+c0<-  fullmarkers[fullmarkers$cluster%in%i,]%>% arrange(desc(avg_log2FC))
+gsea[[i]]<-convert_symbol_entrez(c0$gene)
+}
+#=========================
+ck1 <- compareCluster(geneCluster = gsea, fun = "enrichKEGG")
+dotplot(ck1,showCategory=5)
+gsea.gene <- ck1 %>% group_by(Cluster) %>% top_n(n = -10, wt = -log10(p.adjust))
+ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+#=========================
+ck2 <- compareCluster(geneCluster = gsea, fun = "enrichGO",OrgDb="org.Hs.eg.db",pvalueCutoff=0.05)
+dotplot(ck2,showCategory=10)
+gsea.gene <- ck2 %>% group_by(Cluster) %>% top_n(n = -10, wt = -log10(p.adjust))
+ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+#=========================
+ck3 <- compareCluster(geneCluster = gsea, fun = "enrichPathway",pvalueCutoff=0.05)
+dotplot(ck3,showCategory=10)
+gsea.gene <- ck3 %>% group_by(Cluster) %>% top_n(n = -10, wt = -log10(p.adjust))
+ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+#===========================================
+ck1@compareClusterResult$Class<-"KEGG"
+ck2@compareClusterResult$Class<-"GO"
+ck3@compareClusterResult$Class<-"Pathway"
+df<-rbind(ck1@compareClusterResult
+,ck2@compareClusterResult,ck3@compareClusterResult
+)
+gsea.gene <- df %>% group_by(Cluster) %>% top_n(n = 20, wt = Class)
+#==========================================================
+ggplot(gsea.gene,aes(x=Cluster,y=reorder(Description,log10(p.adjust))))+geom_point(aes(fill=log10(p.adjust)))+facet_wrap(~Class)
+
+ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+
+ggplot(gsea.gene,aes(x=Cluster,y=reorder(Description,Class)))+ geom_tile(aes(fill = -log10(p.adjust)))
+ck <- compareCluster(geneCluster = gsea, fun = "enrichKEGG")
+dotplot(ck,showCategory=10)
+#============================================================
+```
+
+
+# >> Endo DESeq2
+```{r}
+newdf<-Seurat::AggregateExpression(Endo2,group.by = "Patient",slot = "counts",assays = "SCT")
+newdf<-newdf$SCT[!rowSums(newdf$SCT)<10,]
+
+meta<-data.frame("Patient"=colnames(newdf))
+meta$MS<-"Normal"
+x<-meta$Patient%in%c("peng_T9", "peng_T23", "peng_T11","peng_T17", "peng_T21", "peng_T8", "peng_T18", "peng_T15", "PDAC1", "PDAC2")
+meta$MS[x]<-"Activated"
+mRNA <- DESeqDataSetFromMatrix(countData =as.matrix(newdf),
+                              colData = meta,
+                              design= ~ MS)
+mRNA <- estimateSizeFactors( mRNA )
+
+dds <- DESeq2::DESeq(mRNA)
+res <- results(dds)
+resLFC <- lfcShrink(dds, coef="MS_Normal_vs_Activated")
+##Volcano
+
+p1<-EnhancedVolcano(res,
+    lab = rownames(res),
+    x = 'log2FoldChange',
+      xlim = c(-3,5.35),
+    y = "padj",
+    ylim = c(0,6),
+       pCutoff = 0.05,
+   pointSize = 2,
+   labSize = 3,
+    FCcutoff = 2,
+   typeConnectors = "open",
+   titleLabSize = 12,
+ subtitleLabSize = 8,
+    colConnectors = 'black')
+p1
+#================================
+ids<-bitr(rownames(res), fromType = "SYMBOL", toType = "ENTREZID", OrgDb=org.Hs.eg.db)
+dedup_ids = ids[!duplicated(ids[c("SYMBOL")]),]
+df2 = res[rownames(res) %in% dedup_ids$SYMBOL,]
+df2$Y = dedup_ids$ENTREZID
+kegg_gene_list <- df2$log2FoldChange
+names(kegg_gene_list) <- df2$Y
+kegg_gene_list<-na.omit(kegg_gene_list)
+kegg_gene_list = sort(kegg_gene_list, decreasing = T)
+#======================================
+pt<-gsePathway(kegg_gene_list,
+               minGSSize = 10,
+               maxGSSize = 500,
+               pvalueCutoff = 0.05)
+dotplot(pt,showCategory=10)
+
+pt<-gseGO(kegg_gene_list,
+          OrgDb = "org.Hs.eg.db",
+               minGSSize = 10,
+               maxGSSize = 500,
+               pvalueCutoff = 0.05)
+dotplot(pt,showCategory=10)
+
+pt@result$type = "upregulated"
+pt@result$type[pt@result$NES < 0] = "downregulated"
+dotplot(pt,showCategory=50)+facet_grid(.~type)
+#===========================================================
+gsea.gene1<-pt[pt@result$type%in%"upregulated"]
+p1<-ggplot(gsea.gene1,aes(x=-log10(p.adjust),y=reorder(Description,-log10(p.adjust))))+   geom_segment( aes(size=5, xend=0, yend=reorder(Description,-log10(p.adjust))), color="lightblue") 
+  
+gsea.gene2<-pt[pt@result$type%in%"downregulated"]
+p2<-ggplot(gsea.gene2,aes(x=-log10(p.adjust),y=reorder(Description,-log10(p.adjust))))+ geom_segment( aes( size=5,xend=0, yend=reorder(Description,-log10(p.adjust))), color="brown") 
+  cowplot::plot_grid(p1,p2,ncol = 1)
+
+```
+
+#>> Endothelium Pseudobulk + Calculate Gene Signatures
+```{r}
+source('/premiumDisk/khoh/Github/scTME/R/pseudobulk_score.R', echo=TRUE)
+source('/premiumDisk/khoh/Github/scTME/R/pseudobulk.R', echo=TRUE)
+newdf<-pseudobulk(Endo)
+output<-pseudobulk_score(newdf)
+samples<-output[[1]]
+genes<-output[[2]]
+samplesToPlot <- which((!samples$note %in% "OK"))
+```
+
+#>> Endothelium Stratify
+```{r}
+DimPlot(Endo,group.by = "CellType2",split.by = "Condition")
+DimPlot(subset(Endo,Condition%in%"Tumor"),group.by = "CellType2",split.by = "MS")
+
+DimPlot(Endo,group.by = c("Condition","MS"))
+
+Endo$MS<-"Normal"
+
+x<-Endo$Patient%in%c("peng_T9", "peng_T23", "peng_T11","peng_T17", "peng_T21", "peng_T8", "peng_T18", "peng_T15", "PDAC1", "PDAC2")
+Endo$MS[x]<-"Activated"
+table(Endo$MS)
+
+meta<-Endo@meta.data
+heatmap(table(Endo$MS,Endo$CellType2))
+
+p<-ggplot(subset(meta,Condition%in%c("Tumor")), aes(Patient, CellType2)) +
+  geom_jitter(aes(color = Patient), size = 0.1,alpha=0.5)+RotatedAxis()+NoLegend()+facet_grid(~MS)
+print(p)
+a <- ggplot(meta, aes(x=Patient,fill=CellType2))
+a<-a+geom_bar(position="fill")+RotatedAxis()
+print(a)
+a <- ggplot(meta, aes(x=Condition,fill=CellType2))
+a<-a+geom_bar(position="fill")+RotatedAxis()
+print(a)
+#-------------------
+theme_set(theme_cowplot())
+Idents(sub) <- "celltype3"
+DefaultAssay(cancer)<-"RNA"
+small <- subset(sub, downsample = 2000)
+cancer <- subset(Endo, MS %in%c("Normal","Activated"))
+cancer<-ScaleData(cancer)
+avg.cancer <- log1p(AverageExpression(cancer, verbose = FALSE))
+avg.cancer$gene <- rownames(avg.cancer)
+#==============================================================================================
+p1 <- ggplot(avg.cancer, aes(`Normal`, `Activated`)) 
+p1<-p1 + geom_point(data=avg.cancer[!c(avg.cancer$gene%in%gene_lists$subtype1.25,avg.cancer$gene%in%gene_lists$subtype2.25),],alpha=0.1) 
+p1<-p1+geom_point(data=avg.cancer[avg.cancer$gene%in%gene_lists$subtype1.25,],alpha=1,color="orange")
+p1<-p1+geom_point(data=avg.cancer[avg.cancer$gene%in%gene_lists$subtype2.25,],alpha=1,color="blue")
+p1 <- LabelPoints(plot = p1, points = c(gene_lists$subtype1.25,gene_lists$subtype2.25), repel = TRUE)
+print(p1)
+```

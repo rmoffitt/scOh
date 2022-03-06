@@ -1,0 +1,900 @@
+---
+title: "Data Processing"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+#Load Packages
+```{r}
+library(Seurat)
+library(harmony)
+library(Nebulosa)
+library(biomaRt)
+library(dplyr)
+gene_lists <- readRDS("/premiumDisk/khoh/Github/scTME/data/gene_lists.rds")
+source('/premiumDisk/khoh/Github/scTME/R/score_sig.R', echo=TRUE)
+```
+
+#@ Stroma subpopulations
+```{r}
+      
+Stroma<-subset(pancreas_merged,CellType1%in%c("Fibroblast"))
+DefaultAssay(Stroma)<-"SCT"
+
+Stroma<-subset(Stroma,Dataset%in%c("Peng","Powers","Qadir"))
+list_full<-SplitObject(Stroma,split.by = "Dataset")
+
+int.features <- SelectIntegrationFeatures(object.list = list_full, nfeatures = 6000)
+Powers <- list_full$Powers
+list_full$Powers <- NULL
+Stroma <- merge(Powers, y = c(list_full),  project = "Stroma", merge.data = TRUE)
+VariableFeatures(Stroma) <- int.features
+Stroma <- RunPCA(object = Stroma, assay = "SCT", npcs = 30)
+Stroma <- RunHarmony(object = Stroma,
+                                    assay.use = "SCT",
+                                    reduction = "pca",
+                                    dims.use = 1:30,
+                                    group.by.vars = c("Patient"),
+                                    plot_convergence = TRUE)
+ElbowPlot(Stroma,ndims=30,reduction="harmony")
+Stroma <- RunUMAP(object = Stroma, assay = "SCT", 
+                   reduction = "harmony", 
+                   min.dist = 0.4,
+                   local.connectivity = 20,
+                   n.neighbors = 200,
+                 # negative.sample.rate = 20,
+                   dims = 1:20)
+Stroma <- FindNeighbors(object = Stroma, assay = "SCT", reduction = "harmony", dims = 1:20)
+Stroma <- FindClusters(object = Stroma, resolution = 0.4)
+DimPlot(Stroma,label=T)
+DimPlot(Stroma,label=T,group.by = "CellType2")
+
+Stroma<-RunTSNE(Stroma,reduction = "harmony",dims = 1:20)
+DimPlot(Stroma,reduction="tsne",label = T)
+DimPlot(Stroma,label=T,reduction = "tsne")
+#===============================================
+gene_lists$Grunwald_Desert<-c("PDGFRA","PDGFRB","ENG","NGFR")
+gene_lists$Grunwald_Reactive<-c("S100A4","DES","TNC","PDPN","DPP4","FAP","MFAP5","LRRC15","VIM","SPARC","POSTN","ACTA2","COL1A1")
+gene_lists$Chen_csCAF<-c("C3", "C7", "CFB", "CFD", "APOD", "PTGDS", "SFRP4")
+gene_lists$Chen_cCAF<-c("COL1A1", "LUM", "MMP11", "FAP", "SFRP2", "COL11A1", "CTHRC1")
+gene_lists$Chen_ExhaustT<-c("CTLA4","DUSP4","FOXP3","MAGEH1","THADA","TIGIT","TNFRSF4")
+gene_lists$Chen_NaiveT<-c("CCR7","LEF1")
+gene_lists$Chen_EffectorT<-c("GZMK","GNLY")
+gene_lists$Chen_RegT<-c("ENTPD1","LAYN","FOXP3","CTLA4")
+gene_lists$Wang_meCAF<-c("PLA2G2A","LDHB","PGK1","CRABP2")
+gene_lists$Wang_myCAF<-c("POSTN","COL10A1","MMP11","SDC1")
+gene_lists$Wang_apCAF<-c("CD74","TAGLN","HLA-DRA","HLA-DRB5")
+gene_lists$Wang_iCAF<-c("APOD","C7","PTGDS","EGR1")
+gene_lists$Wang_StellateCAF1<-c("RGS5","CD36","PDGFRB")
+gene_lists$Wang_StellateCAF2<-c("SOD3","MT1M","TAGLN")
+
+#===============================================
+Idents(Stroma)<-"seurat_clusters"
+Stroma<-score_sig(Stroma)
+FeaturePlot(Stroma,features = c("APOD","C7","POSTN","MMP11","PLA2G2A","CRABP2","TAGLN","RGS5","SOD3","Grunwald_Reactive","Grunwald_Desert","Tuveson_iCAF","Tuveson_myCAF","Tuveson_apCAF","Moffitt.Activated.25","Moffitt.Normal.25","RGS5","CD74","SLPI","PDGFRA","PDGFRB","LUM","aPSC","qPSC"),order=T,label=T,reduction = "umap")
+
+FeaturePlot(Stroma,features = c("APOD","C7","POSTN","MMP11","PLA2G2A","CRABP2","TAGLN","RGS5","SOD3","Grunwald_Reactive","Grunwald_Desert","Tuveson_iCAF","Tuveson_myCAF","Tuveson_apCAF","Moffitt.Activated.25","Moffitt.Normal.25","HLA-DRA","HLA-DPA1","HLA-DQA1","RGS5","CD74","SLPI","PDGFRA","PDGFRB","LUM","COL1A1","aPSC","qPSC"),order=T,label=T,reduction = "tsne")
+VlnPlot
+FeaturePlot(Stroma,features =c("IL6","IL11", "Grunwald_Reactive","Grunwald_Desert","Tuveson_iCAF","Tuveson_myCAF","Tuveson_apCAF","Moffitt.Activated.25","Moffitt.Normal.25","Chen_csCAF"),order=T,label=T,reduction = "umap")
+FeaturePlot(Stroma,features =c("Grunwald_Reactive","Grunwald_Desert","Tuveson_iCAF","Tuveson_myCAF","Tuveson_apCAF","Moffitt.Activated.25","Moffitt.Normal.25","HLA-DRA","HLA-DPA1","HLA-DQA1","RGS5","CD74","SLPI","PDGFRA","PDGFRB","LUM","COL1A1","aPSC","qPSC"),order=T,reduction = "umap",label=T)
+
+plot_density(Stroma,features =c("Grunwald_Reactive","Grunwald_Desert","Tuveson_iCAF","Tuveson_myCAF","Tuveson_apCAF","Moffitt.Activated.25","Moffitt.Normal.25","HLA-DRA","HLA-DPA1","HLA-DQA1","CD74","SLPI","PDGFRA","PDGFRB","LUM","COL1A1","aPSC","qPSC"),size = 0.1,reduction = "umap")
+plot_density(Stroma,features =c("Grunwald_Reactive","Grunwald_Desert","Tuveson_iCAF","Tuveson_myCAF","Tuveson_apCAF","Moffitt.Activated.25","Moffitt.Normal.25","HLA-DRA","PDPN","HLA-DQA1","qPSC","aPSC"),size = 0.1,reduction = "umap")
+DimPlot(Lymphocytes,group.by="Phase")
+FeaturePlot(Lymphocytes,features=c("FCER1A","AIF1","PRSS1","FXYD2","CPA2"),order=T,label=T)
+VlnPlot(Stroma,features =c("Grunwald_Reactive","Grunwald_Desert","Tuveson_iCAF","Tuveson_myCAF","Tuveson_apCAF","Moffitt.Activated.25","Moffitt.Normal.25","HLA-DRA","HLA-DPA1","HLA-DQA1","CD74","SLPI","PDGFRA","PDGFRB","LUM","COL1A1","aPSC","qPSC"))
+VlnPlot(Stroma2,features = c("TGFBR1"),slot="data",assay = "RNA",group.by="CellType2",sort=T)
+VlnPlot(Stroma,features = c("Chen_csCAF","C7","Chen_cCAF","Wang_meCAF","Wang_iCAF","Wang_StellateCAF1","Wang_StellateCAF2","POSTN","CRABP2","TAGLN","RGS5","SOD3"),group.by="seurat_clusters",sort=T,pt.size=0)
+FeaturePlot(Stroma,features = c("Chen_csCAF","C7","Chen_cCAF","Wang_meCAF","Wang_iCAF","Wang_StellateCAF1","Wang_StellateCAF2","POSTN","CRABP2","TAGLN","RGS5","SOD3"),order=T)
+FeaturePlot(Stroma,features=c("Moffitt.Activated.25","Moffitt.Normal.25"),blend=T,order = T,label = T,cols = c("brown","lightblue"),raster = T)
+FeaturePlot(Lymphocytes,features=c("FCER1A","AIF1","PRSS1","FXYD2","CPA2"),order=T,label=T)
+plot_density(Stroma,features =c("Moffitt.Activated.25","Moffitt.Normal.25","aPSC","qPSC"),size = 0.1,reduction = "umap")
+plot_density(Stroma,features =c("Tuveson_iCAF","Tuveson_myCAF","Tuveson_apCAF","Tuveson_panCAF"),size = 0.1,reduction = "umap",method = "wkde")
+VlnPlot(Stroma,features =c("Tuveson_iCAF","Tuveson_myCAF","Tuveson_apCAF","Tuveson_panCAF"))
+
+plot_density(Stroma,features =c("C3","RGS5","IL11","PHGDH","COMP"),size = 0.1,reduction = "umap")
+
+plot_density(Stroma,features =c("Chen_csCAF","C7","Chen_cCAF","Wang_meCAF","Wang_iCAF","Wang_StellateCAF1","Wang_StellateCAF2","POSTN","CRABP2","TAGLN","RGS5","SOD3"),size = 0.1,reduction = "umap",method="wkde")
+plot_density(Stroma,features =c("C3","RGS5","LDHB","CRABP2","PGK1","APOD"),size = 0.1,reduction = "umap")
+VlnPlot(Lymphocytes,features = c("FCER1A","FCGR3A","AIF1","PRSS1","TYROBP","CD163"),slot="data",assay = "RNA")
+VlnPlot(Lymphocytes,features = c("PRSS1","CD3D","LUM","KRT17","TYROBP","CD163"),slot="data",assay = "RNA")
+VlnPlot(Lymphocytes,features = c("PRSS1","CD3D","LUM","KRT17","TYROBP","CD163"),slot="counts",assay = "SCT")
+plot_density(Stroma, c("MMP11","CFD","APOD","RGS5","MYH11","PLAUR","LUM","MFAP5","SAA1","XBP1","MOXD1","AGTR1"),size = 0.1,reduction = "tsne")
+```
+
+
+```{r}
+
+Stroma.Monocle<-run_monocle(Stroma)
+plot_cells(Stroma.Monocle, 
+           color_cells_by = 'cluster',
+           label_groups_by_cluster=T,
+           label_leaves=FALSE,
+           group_label_size = 5,
+           label_branch_points=T)
+
+Stroma <- AddMetaData(
+  object = Stroma,
+  metadata = Stroma.Monocle@principal_graph_aux@listData$UMAP$pseudotime,
+  col.name = "Erythroid"
+)
+```
+
+#>> Stroma Heatmap
+```{r}
+Stroma<-BuildClusterTree(Stroma,dims=1:20,reorder = T)
+PlotClusterTree(Stroma)
+table(Stroma$CellType2)
+Idents(Stroma)<-"CellType2"
+small <- subset(Stroma, downsample = 300)
+DefaultAssay(small)<-"RNA"
+small<-NormalizeData(small)
+small<-ScaleData(small,vars.to.regress = "Patient")
+fullmarkers <- FindAllMarkers(small,min.pct = 0.2,min.diff.pct = 0.2,test.use = "MAST",only.pos = F)
+saveRDS(fullmarkers,"StromaCellType2Markers.rds")
+write.csv(fullmarkers , file = "StromaCellType2Markers.csv", row.names=FALSE)
+
+top10 <- fullmarkers %>% group_by(cluster) %>% top_n(n = 10 ,wt = avg_log2FC)
+toppval <- fullmarkers %>% group_by(cluster) %>% top_n(n = -10, wt = p_val_adj)
+#Idents(small)<-"seurat_clusters"
+DoHeatmap(small, features = top10$gene,label=T) + NoLegend()
+DoHeatmap(small, features = toppval$gene,label=T) + NoLegend()
+#================================ Look at signaling?
+GO_0140375_Immune <-read.table("/premiumDisk/khoh/Github/scTME/data/GO_0140375_Immune.txt", quote="\"", comment.char="")
+kegg_cytokine <- readr::read_csv("/premiumDisk/khoh/Github/scTME/data/kegg_cytokine.txt",    skip = 1)
+fullmarkers <- FindAllMarkers(small,only.pos = F,features = kegg_cytokine$`> Cytokine-cytokine receptor interaction`)
+
+top10 <- fullmarkers %>% group_by(cluster) %>% top_n(n = 10 ,wt = avg_log2FC)
+toppval <- fullmarkers %>% group_by(cluster) %>% top_n(n = -10, wt = p_val_adj)
+#Idents(small)<-"seurat_clusters"
+DoHeatmap(small, features = top10$gene,label=T) + NoLegend()
+DoHeatmap(small, features = toppval$gene,label=T) + NoLegend()
+#====================
+
+#===============Transcription Factors
+tf<-read.csv("/premiumDisk/khoh/Github/scTME/data/TF_genes.txt",header = F)
+fullmarkers <- FindAllMarkers(small,only.pos = F,features = tf)
+
+top10 <- fullmarkers %>% group_by(cluster) %>% top_n(n = 10 ,wt = avg_log2FC)
+toppval <- fullmarkers %>% group_by(cluster) %>% top_n(n = -10, wt = p_val_adj)
+#Idents(small)<-"seurat_clusters"
+DoHeatmap(small, features = top10$gene,label=T) + NoLegend()
+DoHeatmap(small, features = toppval$gene,label=T) + NoLegend()
+#==========================================
+new.cluster.ids <- 
+ c("IL11.CAF",#7==  PHGDH - fibrotic source? TGFB/IL11
+   "Myocyte",#4====
+"qPSC",#0====
+"smPSC",#1====
+"iCAF", #5=====HAS1
+"Schwann",#6===
+    "myCAF", #2====
+     "csCAF")#3=====
+names(new.cluster.ids) <- levels(Stroma)
+Stroma <- RenameIdents(Stroma, new.cluster.ids)
+Stroma$CellType2<-Idents(Stroma)
+DimPlot(Stroma,label=T,group.by = "CellType2",reduction = "umap")
+#saveRDS(Stroma,"Stroma_Subset2021.rds")
+#==============================================================
+pancreas_merged$CellType2[colnames(Stroma)]<-(as.character(Stroma$CellType2))
+DimPlot(pancreas_merged,group.by=c("CellType1","CellType2"),order=T,label=T)
+DimPlot(pancreas_merged,group.by=c("CellType1","CellType2"),order=T,label=T,reduction = "tsne")
+# Compare High Activated Grouping
+#==============================================================
+Stroma$StromaCluster<-"Normal"
+x<-which(Stroma$Patient%in%c("peng_T9","peng_T17","peng_T21","peng_T11","PDAC2","PDAC1","peng_T23"))
+Stroma$StromaCluster[x]<-"Activated"
+Idents(Stroma)<-"StromaCluster"
+small <- subset(subset(Stroma,Condition%in%"Tumor"), downsample = 1000)
+DefaultAssay(small)<-"RNA"
+small<-NormalizeData(small)
+small<-ScaleData(small,vars.to.regress = "Patient")
+fullmarkers <- FindAllMarkers(small,min.pct = 0.2,min.diff.pct = 0.2,test.use = "MAST",only.pos = F)
+
+top10 <- fullmarkers %>% group_by(cluster) %>% top_n(n = 20 ,wt = avg_log2FC)
+toppval <- fullmarkers %>% group_by(cluster) %>% top_n(n = -20, wt = p_val_adj)
+#Idents(small)<-"seurat_clusters"
+DoHeatmap(small, features = top10$gene,label=T) + NoLegend()
+DoHeatmap(small, features = toppval$gene,label=T) + NoLegend()
+heatmap(table(Stroma$Patient,Stroma$StromaCluster))
+```
+
+#>> Stroma GSEA
+```{r}
+library(clusterProfiler)
+
+source('/premiumDisk/khoh/Github/scTME/R/convert_symbol_entrez.R', echo=TRUE)
+gsea<-NULL
+Idents(Stroma)<-"CellType2"
+fullmarkers <- FindAllMarkers(Stroma,min.pct = 0.25,min.diff.pct = 0.25,test.use = "MAST",only.pos = T)
+#=========================
+gsea<-NULL
+for (i in unique(Stroma$CellType2)){
+c0<-  fullmarkers[fullmarkers$cluster%in%i,]%>% arrange(desc(avg_log2FC))
+gsea[[i]]<-convert_symbol_entrez(c0$gene)
+}
+ck1 <- compareCluster(geneCluster = gsea, fun = "enrichKEGG")
+dotplot(ck1,showCategory=5)
+gsea.gene <- ck1 %>% group_by(Cluster) %>% top_n(n = -10, wt = -log10(p.adjust))
+ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+#=========================
+ck2 <- compareCluster(geneCluster = gsea, fun = "enrichGO",OrgDb="org.Hs.eg.db",pvalueCutoff=0.05)
+dotplot(ck2,showCategory=10)
+gsea.gene <- ck2 %>% group_by(Cluster) %>% top_n(n = -5, wt = -log10(p.adjust))
+ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+#=========================
+ck3 <- compareCluster(geneCluster = gsea, fun = "enrichPathway",pvalueCutoff=0.01)
+dotplot(ck3,showCategory=10)
+gsea.gene <- ck3 %>% group_by(Cluster) %>% top_n(n = -5, wt = -log10(p.adjust))
+ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+#=========================================
+ck <- compareCluster(geneCluster = gsea, fun = "enrichKEGG")
+dotplot(ck,showCategory=5)
+ck <- compareCluster(geneCluster = gsea, fun = "enrichGO",OrgDb="org.Hs.eg.db")
+dotplot(ck,showCategory=5)
+ck <- compareCluster(geneCluster = gsea, fun = "enrichPathway")
+dotplot(ck,showCategory=5)
+```
+
+
+#>> Stroma Stratify Patients
+```{r}
+Stroma$MS<-"Normal"
+x<-Stroma$Patient%in%c("peng_T9", "peng_T23", "peng_T11","peng_T17", "peng_T21", "peng_T8", "peng_T18", "peng_T15", "PDAC1", "PDAC2")
+Stroma$MS[x]<-"Activated"
+table(Stroma$MS)
+
+meta<-Stroma2@meta.data
+heatmap(table(Stroma2$MS,Stroma2$CellType2))
+
+p<-ggplot(subset(meta,Condition%in%c("Tumor")), aes(Patient, CellType2)) +
+  geom_jitter(aes(color = Patient), size = 0.1,alpha=0.5)+RotatedAxis()+NoLegend()+facet_grid(~MS)
+print(p)
+a <- ggplot(meta, aes(x=CellType2,fill=MS))
+a<-a+geom_bar(position="fill")+RotatedAxis()
+print(a)
+a <- ggplot(meta, aes(x=MS,fill=CellType2))
+a<-a+geom_bar(position="fill")+RotatedAxis()
+print(a)+coord_flip()
+DimPlot(subset(Stroma,Condition%in%"Tumor"),split.by="MS",group.by = "CellType2",pt.size = 0.1)
+FeatureScatter(Stroma,feature1 = "Moffitt.Normal.25",feature2="Moffitt.Activated.25",group.by = "MS",pt.size = 0.1)
+
+a <- ggplot(Stroma@meta.data, aes(x=CellType2,fill=MS))
+a<-a+geom_bar(aes(stat="fill"))+RotatedAxis()+coord_flip()
+print(a)
+
+#=========================================================================
+Idents(Stroma)<-"MS"
+small <- subset(subset(Stroma,Condition%in%"Tumor"), downsample = 1000)
+DefaultAssay(small)<-"RNA"
+small<-NormalizeData(small)
+small<-ScaleData(small,vars.to.regress = "Patient")
+fullmarkers <- FindAllMarkers(small,min.pct = 0.2,min.diff.pct = 0.2,test.use = "MAST",only.pos = F)
+
+top10 <- fullmarkers %>% group_by(cluster) %>% top_n(n = 20 ,wt = avg_log2FC)
+toppval <- fullmarkers %>% group_by(cluster) %>% top_n(n = -20, wt = p_val_adj)
+#Idents(small)<-"seurat_clusters"
+DoHeatmap(small, features = top10$gene,label=T) + NoLegend()
+DoHeatmap(small, features = toppval$gene,label=T) + NoLegend()
+heatmap(table(Stroma$Patient,Stroma$StromaCluster))
+p<-ggplot(samples, aes(x=Moffitt.F6_BasalLike.top25, y=Moffitt.F8_Classical.top25,color=seurat_clusters)) + geom_point(size=0.1, shape=1)+facet_wrap(~orig.ident_a) +geom_rug()+ggtitle("Moffitt Subtype 25 [Neoplastic]")#+scale_color_manual(values=c("orange", "blue"))
+print(p)
+p<-ggplot(samples, aes(x=subtype1.25, y=subtype2.25,color=seurat_clusters)) +
+  geom_point(size=0.1, shape=1)+facet_wrap(~orig.ident_a) + stat_ellipse(aes(group = seurat_clusters))+geom_rug()+ggtitle("Subtype 25 [Epithelium]")+scale_color_manual(values=c("orange", "blue"))
+print(p)
+
+```
+
+
+#>> Stroma GSEA MS
+```{r}
+Stroma$MS<-"Normal"
+#x<-Stroma$Patient%in%c("pe
+```
+
+#>> Stroma Pseudobulk + Calculate Gene Signatures
+```{r}
+library(ggrepel)
+source('/premiumDisk/khoh/Github/scTME/R/pseudobulk_score.R', echo=TRUE)
+source('/premiumDisk/khoh/Github/scTME/R/pseudobulk.R', echo=TRUE)
+newdf<-pseudobulk(Stroma)
+source('/premiumDisk/khoh/Github/scTME/R/pseudobulk_all.R', echo=TRUE)
+newdf<-pseudobulk_all(Stroma)
+samples<-pseudobulk_score(newdf)
+#=======================
+samples<-samples[[1]]
+samples$Condition<-"Tumor"
+samples$Condition[c(3:13,38:40)]<-"Normal"
+p<-ggplot(samples, aes(Moffitt.F13_NormalStroma.top250, Moffitt.F5_ActivatedStroma.top250,label=Patient)) +geom_text_repel()+
+  geom_point(aes(color = Patient), size = 3,alpha=0.5)+RotatedAxis()+NoLegend()
+print(p)
+#=========================
+p<-ggplot(samples, aes(Moffitt.Normal.25, Moffitt.Activated.25,label=Patient)) +
+  geom_bar(aes(color = Patient), size = 1,alpha=0.5)+RotatedAxis()+NoLegend()+geom_label()
+print(p)
+
+p<-ggplot(samples, aes(Moffitt.Normal.25, Moffitt.Activated.25)) +
+  geom_point(aes(color = Patient), size = 1,alpha=0.5)+RotatedAxis()+NoLegend()
+print(p)
+
+p<-ggplot(samples, aes(Wang_meCAF, Wang_myCAF,label=Patient)) +geom_text_repel()+
+  geom_point(aes(color = Patient), size = 2,alpha=0.5)+RotatedAxis()+NoLegend()
+print(p)
+```
+
+#>> Stroma PCA
+```{r}
+library(FactoMineR)
+library(factoextra)
+options(ggrepel.max.overlaps = Inf)
+# compute distance measure
+newdf<-t(newdf)
+feature.means<-as.numeric(apply(X=newdf,MARGIN=2,FUN=mean))
+feature.stdevs<-as.numeric(apply(X=newdf,MARGIN=2,FUN=sd))
+featureKeep<-which(feature.stdevs>quantile(feature.stdevs,0.95,na.rm=T)&feature.means>quantile(feature.means,0.95,na.rm=T))
+
+new_pca <- PCA(newdf[,featureKeep])
+fviz_screeplot(new_pca, addlabels = TRUE)
+var <- get_pca_var(new_pca)
+fviz_contrib(new_pca, choice = "var", axes = 1, top = 10)
+fviz_contrib(new_pca, choice = "var", axes = 2, top = 10)
+fviz_contrib(new_pca, choice = "var", axes = 3, top = 10)
+
+#==================================================
+fviz_pca_ind(new_pca, col.ind = "cos2",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             axes=c(1,2),
+             repel = TRUE # Avoid text overlapping (slow if many points)
+             )
+#==================================================
+fviz_pca_ind(new_pca, col.ind = "cos2",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             axes=c(2,3),
+             repel = TRUE # Avoid text overlapping (slow if many points)
+             )
+# Biplot of individuals and variables
+fviz_pca_biplot(new_pca, repel = TRUE,top=10,axes=c(1,2))
+```
+
+#>> Stroma Cluster
+```{r}
+tmp<-samples[,-c(1:2)]
+rownames(tmp)<-samples[,1]
+#tmp<-samples
+#==========================================================
+feature.means<-as.numeric(apply(X=tmp,MARGIN=2,FUN=mean))
+feature.stdevs<-as.numeric(apply(X=tmp,MARGIN=2,FUN=sd))
+featureKeep<-which(feature.stdevs>quantile(feature.stdevs,0.2,na.rm=T))
+featureKeep<-c("Moffitt.Normal.25","Moffitt.Activated.25","Grunwald_Desert","Grunwald_Reactive","Chen_cCAF","Wang_meCAF","Wang_iCAF","Wang_apCAF","Wang_StellateCAF1","Wang_StellateCAF2","qPSC","aPSC","Tuveson_myCAF","Tuveson_iCAF","Tuveson_panCAF","Tuveson_apCAF","Bernard_Myofibroblast","Bernard_i_Myofibroblast","Glycolytic")
+library(FactoMineR)
+library(factoextra)
+# compute distance measure
+new_pca <- PCA(tmp[,featureKeep])
+fviz_screeplot(new_pca, addlabels = TRUE)
+var <- get_pca_var(new_pca)
+fviz_contrib(new_pca, choice = "var", axes = 1, top = 10)
+fviz_contrib(new_pca, choice = "var", axes = 2, top = 10)
+fviz_contrib(new_pca, choice = "var", axes = 3, top = 10)
+
+#==================================================
+fviz_pca_ind(new_pca, col.ind = "cos2",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             axes=c(1,2),
+             repel = TRUE # Avoid text overlapping (slow if many points)
+             )
+# Biplot of individuals and variables
+fviz_pca_biplot(new_pca, repel = TRUE,top=10,axes=c(1,2))
+# Compute hierarchical clustering and cut into 4 clusters
+res <- hcut(tmp, k = 4, stand = TRUE)
+# Visualize
+fviz_dend(res, rect = TRUE, cex = 0.5,
+          k_colors = c("#00AFBB","#2E9FDF", "#E7B800", "#FC4E07"))
+set.seed(123)
+km.res <- kmeans((tmp[,featureKeep]), 4, nstart = 25)
+# 3. Visualize
+library("factoextra")
+fviz_cluster(km.res, data = tmp[,featureKeep],
+             palette = c("#00AFBB","#2E9FDF", "#E7B800", "#FC4E07"),
+             ggtheme = theme_minimal(),
+             axes=c(1,2),
+             main = "Partitioning Clustering Plot"
+             )
+
+#======================
+# Subtype Comparison
+p <- ggplot(samples,aes(x = Moffitt.F6_BasalLike.top25,
+                   y = Moffitt.F8_Classical.top25,
+                  # shape = orig.ident,
+                   color = celltype3))
+p <- p + geom_point(size=3)
+p <- p + stat_ellipse(aes(group = celltype2))
+p <- p + scale_color_manual(values=c("basal" = "orange","classical" = "blue", "NA" ="black"))
+print(p)
+p<-ggplot(subset(samples,celltype3%in%c("Basal-like Cancer","Classical Cancer")), aes(orig.ident_a, seurat_clusters)) +
+  geom_jitter(aes(color = orig.ident_a), size = 0.1,alpha=0.5)+RotatedAxis()+NoLegend()
+print(p)
+```
+
+#>> Stroma CellType2 Pseudobulk
+```{r}
+GO_0140375_Immune <-read.table("/premiumDisk/khoh/Github/scTME/data/GO_0140375_Immune.txt", quote="\"", comment.char="")
+kegg_cytokine <- read_csv("Github/scTME/data/kegg_cytokine.txt", 
++     skip = 1)
+#Cytokine Heatmap
+library(pheatmap)
+library(RColorBrewer)
+genestouse<-c(GO_0140375_Immune$V1,kegg_cytokine$`> Cytokine-cytokine receptor interaction`)
+genestouse<-genestouse[genestouse%in%fullmarkers$gene]
+
+small <- subset(Stroma, downsample = 3000)
+
+fullmarkers <- FindAllMarkers(Stroma)
+genestouse<-genestouse[genestouse%in%fullmarkers$gene]
+
+#agg<-Seurat::AggregateExpression(Stroma,group.by = "CellType2")$RNA
+agg<-log1p(Seurat::AverageExpression(Stroma,group.by="CellType2")$RNA)
+
+#agg<-agg[rowSums(agg)>10000,]
+#==========================================
+rows<-rownames(agg)%in%genestouse
+pheatmap(agg[rows,],scale = "column",clustering_method = "ward.D2",color = colorRampPalette(rev(brewer.pal(n = 9, name ="RdBu")))(50))
+pheatmap(agg[rows,],scale = "column",clustering_method = "median",color = colorRampPalette(rev(brewer.pal(n = 9, name ="RdBu")))(50))
+#==========================================
+rows<-rownames(agg)%in%kegg_cytokine$`> Cytokine-cytokine receptor interaction`
+pheatmap(agg[rows,])
+
+VlnPlot(Stroma,features =c("CXCL14","CXCL12","CCL2","IL6","IFNGR2"),split.by = "MS")
+
+```
+
+
+#>>basal/classical
+```{r}
+tumo<-subset(Stroma,Condition%in%"Tumor")
+tumo$MT<-"Classical"
+tumo$MT[tumo$Patient%in%c("peng_T12","peng_T11","peng_T16","peng_T19","PDAC1")]<-"Basal"
+
+a <- ggplot(tumo@meta.data, aes(CellType2,fill=MT))+geom_bar(stat = "count",position = "fill")+RotatedAxis()#+coord_flip()
+print(a)
+#=============================
+
+Stroma$MS<-"Normal"
+x<-Stroma$Patient%in%c("peng_T9", "peng_T23", "peng_T11","peng_T17", "peng_T21", "peng_T8", "peng_T18", "peng_T15", "PDAC1", "PDAC2")
+Stroma$MS[x]<-"Activated"
+table(Stroma$MS)
+
+meta<-Stroma@meta.data
+heatmap(table(Stroma$MS,Stroma$CellType2))
+```
+
+```{r, fig.width=8, fig.height=10, message=FALSE, warning=FALSE, echo=FALSE}
+samples<-pseudobulk_score(newdf)
+
+genes<-samples[[2]]
+expression<-samples[[3]]
+samples<-samples[[1]]
+x<-samples$Patient%in%c("P02","PDAC_A","PDAC_B","PDAC_C")
+samples$note[x]<-"OK"
+x<-samples$Patient%in%c("P03","P04","P05","P06","P07","P08","P09","P10","P01","P02","PDAC_A","PDAC_B","PDAC_C")
+samples$Type<-"Discovery Set"
+samples$Type[x]<-"Validation Set"
+x<-samples$Patient%in%c("peng_T9", "peng_T23", "peng_T11","peng_T17", "peng_T21", "peng_T8", "peng_T18", "peng_T15", "PDAC1", "PDAC2","PDAC_C","P09","P04","P05","P07","P10")
+samples$MS<-"Normal"
+samples$MS[x]<-"Activated"
+table(samples$MS)
+samplesToPlot <- which((!samples$note %in% "OK"))
+#===========================================================
+genes1<-gene_lists[c("Moffitt.Activated.25","Moffitt.Normal.25")]
+#genes1<-gene_lists[c("Califano_Morpho","Califano_Lineage")]
+#genes1<-gene_lists[c("Tuveson_iCAF","Tuveson_myCAF","Tuveson_apCAF")]
+genesToPlot<-which(rownames(expression) %in% unlist(genes1))
+these.symbols<-genes$SYMBOLS[genesToPlot]
+geneOrder=numeric(length(these.symbols))
+for (i in 1:length(genes1)){
+print(i)
+geneOrder=geneOrder + (these.symbols %in% genes1[[i]])*(2^i)
+}
+geneOrder<-order(geneOrder)
+
+RowSideColors <- getSideColors(
+  sampInfo = genes,
+
+  sampleTracks = c("Moffitt.Activated.25",
+                   "Moffitt.Normal.25",
+                   "Tuveson_iCAF"
+                 
+                 ),
+  colorlists = list(c("white","orange"),
+                    c("white","red"),
+                     c("white","blue")
+                   
+                    ) , drop.levels = FALSE)
+ColSideColors <- getSideColors(
+  sampInfo = samples,
+  sampleTracks = c( 
+                    "Moffitt.Normal.25",
+                    "Moffitt.Activated.25",
+                    "Type",
+                    "MS"
+              ),
+
+  colorlists = list( #c("red","yellow","green","blue","pink", "purple", "gray", "black", "brown"),
+                        c("white","orange"),
+                      c("white","blue"),
+                      c("red","blue"),
+                      c("green","orange")
+                   ))
+  
+#===========================================================
+# This is the sample track on top that you can show different metadata attributes or scores for gene signatures in your gene_liists. Again, # of Items has to match the color. For multiple factors like Patient ID, You can set 
+#===========================================================
+# color scheme for heat map
+myPalette <- colorRampPalette(c("darkblue","blue", "white", "red","darkred"))(n = 299) 
+#===========================================================
+#samplesToPlot <- which((!samples$note %in% "OK"))
+genesToPlot2 <- c(which(genes$SYMBOL %in% gene_lists$Moffitt.F13_NormalStroma.top100),
+                 which(genes$SYMBOL %in% gene_lists$Moffitt.F5_ActivatedStroma.top100))
+# do clustering and make semiautomatic calls
+sampletree <- ConsensusClusterPlus::ConsensusClusterPlus(d = t(scale(scale=FALSE,center=TRUE,
+                                                                     x = t(as.matrix(expression[genesToPlot2,samplesToPlot])))),
+                                                         seed = 1234,
+                                                         pFeature = 0.8,
+                                                         pItem = 0.8,
+                                                         maxK = 3,
+                                                         reps=500,
+                                                         distance="pearson",
+                                                         clusterAlg="hc")[[2]]$consensusTree
+#plot the heatmap
+#km <- kmeans((scale(t(expression[genestoplot,]))), 2)
+rowmydata<-as.matrix((expression[genesToPlot,samplesToPlot]))
+rkm <- kmeans(t(scale(t(rowmydata))), 2)
+heatmap.3(as.matrix(expression[genesToPlot,samplesToPlot]), 
+  #Rowv=convert_kmeans_to_dendrogram(rkm$cluster),
+#Rowv=TRUE,
+Rowv=convert_order_to_dendrogram(geneOrder),
+# distfun = function(x) dist(x,method = 'euclidean'),
+ distfun=function(x) {as.dist((1-cor(t(x)))/2)},
+#Colv=TRUE,
+Colv=as.dendrogram(sampletree),
+  #Colv=convert_kmeans_to_dendrogram(km$cluster),
+  dendrogram = "both",
+  trace="none",
+  margins =c(6,6),
+  labRow = genes[genesToPlot,"gene_short_name"],
+  labCol = samples$rna_match_id[samplesToPlot],
+  col=myPalette,breaks = seq(from = -3,to  = 3, length.out = length(myPalette)+1),
+  scale=c("row"),
+  cexRow = 0.8,
+  RowSideColors = t(RowSideColors$SideColors[genesToPlot,]),
+  RowSideColorsSize = dim(RowSideColors$SideColors)[2]*1.5,
+  ColSideColors = ColSideColors$SideColors[samplesToPlot,],
+  ColSideColorsSize = dim(ColSideColors$SideColors)[2]*1,
+  lwid = c(1,5),lhei = c(1,5))
+#===========================================================
+```
+#============================================
+
+# Signaling Analysis
+```{r}
+library(CellChat)
+source('/premiumDisk/khoh/Github/scTME/R/run_cellchat.R', echo=TRUE)
+signaldf<-merge(Lymphocytes,c(Stroma,Endo,Myeloid))
+#signaldf<-
+#signaldf$MS<-"Normal"
+#x<-Stroma$Patient%in%c("peng_T9", "peng_T23", "peng_T11","peng_T17", "peng_T21", "peng_T8", "peng_T18", "peng_T15", "PDAC1", "PDAC2")
+#signaldf$MS[x]<-"Activated"
+#DefaultAssay(signaldf)<-"RNA"
+table(signaldf$CellType2)
+Idents(signaldf)<-"CellType2"
+signaldf<-subset(signaldf,Condition%in%"Tumor")
+#signaldf<-subset(signaldf,downsample=1000)
+signaldf<-subset(signaldf,CellType2!=c("Pro.T.Cell","IL11.CAF"))
+
+#========================
+labels<-signaldf$CellType2
+meta <- data.frame(group = labels, row.names = names(labels)) 
+data.input <- GetAssayData(signaldf, assay = "RNA", slot = "data") # normalized data matrix
+cellchat <- createCellChat(object = data.input, meta = meta, group.by = "group")
+cellchat<-run_cellchat(cellchat)
+
+#========================
+activated<-subset(signaldf,MS%in%"Activated")
+labels<-activated$CellType2
+meta <- data.frame(group = labels, row.names = names(labels)) 
+data.input <- GetAssayData(activated, assay = "RNA", slot = "data") # normalized data matrix
+ccactivated <- createCellChat(object = data.input, meta = meta, group.by = "group")
+ccactivated<-run_cellchat(ccactivated)
+ccactivated<-updateCellChat(ccactivated) 
+#=================================================
+#meta$MS<-signaldf$MS
+# create a dataframe of the cell labels
+CellChatDB <- CellChatDB.human
+CellChatDB.use <- subsetDB(CellChatDB, search = "Secreted Signaling") # use Secreted Signaling
+# set the used database in the object
+#================================================== Comparison
+object.list <- list(Normal = ccnormal, Activated = ccactivated)
+cellchat <- mergeCellChat(object.list, add.names = names(object.list))
+#aggregateNet(cellchat)
+gg1 <- compareInteractions(cellchat, show.legend = F, group = c(1,2))
+gg2 <- compareInteractions(cellchat, show.legend = F, group = c(1,2), measure = "weight")
+gg1 + gg2
+par(mfrow = c(1,2), xpd=TRUE)
+netVisual_diffInteraction(cellchat, weight.scale = T,)
+netVisual_diffInteraction(cellchat, weight.scale = T, measure = "weight",comparison = c(1,2),remove.isolate = T)
+#========================================================
+#cellchat <- createCellChat(object = data.input, meta = meta, group.by = "group")
+#==================================================
+cellchat@DB <- CellChatDB
+# use all CellChatDB for cell-cell communication analysis
+# CellChatDB.use <- CellChatDB
+cellchat <- subsetData(cellchat) # This step is necessary even if using the whole database
+future::plan("multiprocess", workers = 4) # do parallel
+#> Warning: [ONE-TIME WARNING] Forked processing ('multicore') is disabled
+cellchat<-run_cellchat(cellchat)
+#> future R sessions, see ?future::supportsMulticore
+cellchat <- identifyOverExpressedGenes(cellchat)
+cellchat <- identifyOverExpressedInteractions(cellchat)
+# project gene expression data onto PPI network (optional)
+cellchat <- projectData(cellchat, PPI.human)
+#=============================================================
+cellchat <- computeCommunProb(cellchat,raw.use = F)
+# Filter out the cell-cell communication if there are only few number of cells in certain cell groups
+cellchat <- filterCommunication(cellchat, min.cells = 50)
+#=============================================================
+cellchat <- computeCommunProbPathway(cellchat)
+#=============================================================
+cellchat <- aggregateNet(cellchat)
+#=============================================================
+groupSize <- as.numeric(table(cellchat@idents))
+par(mfrow = c(1,2), xpd=TRUE)
+netVisual_circle(cellchat@net$count, vertex.weight = groupSize, weight.scale = T, label.edge= F, title.name = "Number of interactions",top = 0.1,)
+netVisual_circle(cellchat@net$weight, vertex.weight = groupSize, weight.scale = T, label.edge= F, title.name = "Interaction weights/strength",top = 0.1)
+#=============================================================
+mat <- cellchat@net$weight
+par(mfrow = c(3,4), xpd=TRUE)
+for (i in 1:nrow(mat)) {
+  mat2 <- matrix(0, nrow = nrow(mat), ncol = ncol(mat), dimnames = dimnames(mat))
+  mat2[i, ] <- mat[i, ]
+  netVisual_circle(mat2, vertex.weight = groupSize, weight.scale = T, edge.weight.max = max(mat), title.name = rownames(mat)[i])
+}
+#=============================================================
+cellchat@netP$pathways
+pathways.show <- c("TGFb") 
+# Hierarchy plot
+# Here we define `vertex.receive` so that the left portion of the hierarchy plot shows signaling to fibroblast and the right portion shows signaling to immune cells 
+vertex.receiver = seq(1,20) # a numeric vector. 
+netVisual_aggregate(cellchat, signaling = pathways.show,  vertex.receiver = vertex.receiver)
+par(mfrow=c(1,1))
+netVisual_heatmap(cellchat, signaling = pathways.show, color.heatmap = "Reds")
+netAnalysis_contribution(cellchat, signaling = pathways.show)
+# Circle plot
+pairLR.CXCL <- extractEnrichedLR(cellchat, signaling = signaling, geneLR.return = FALSE)
+LR.show <- pairLR.CXCL[c(1:4),] # show one ligand-receptor pair
+netVisual_individual(cellchat, signaling = pathways.show, pairLR.use = LR.show, layout = "circle",thresh = 0.01)
+netVisual_aggregate(cellchat, signaling = "TGFb", layout = "circle",thresh = 0.01,top=0.1,remove.isolate = F)
+netVisual_aggregate(cellchat, signaling = "MIF", layout = "circle",thresh = 0.01,top=0.1,remove.isolate = F)
+netVisual_aggregate(cellchat, signaling = "ITGB2", layout = "circle",thresh = 0.01,top = 0.1)
+netVisual_aggregate(cellchat, signaling = "ICAM", layout = "circle",thresh = 0.01,top = 0.1)
+netVisual_aggregate(cellchat, signaling = "IL6", layout = "circle",thresh = 0.01,top = 0.1)
+netVisual_aggregate(cellchat, signaling = "CXCL", layout = "circle")
+netVisual_aggregate(cellchat, signaling = "IL2", layout = "circle")
+netVisual_aggregate(cellchat, signaling = "NOTCH", layout = "circle",thresh = 0.01,top = 0.1)
+netVisual_aggregate(cellchat, signaling = "MIF", layout = "circle")
+netVisual_aggregate(cellchat, signaling = "IL2", layout = "circle",thresh = 0.01,top = 0.1)
+netVisual_aggregate(cellchat, signaling = "TIGIT", layout = "circle",thresh = 0.01,top = 0.1)
+netVisual_aggregate(cellchat, signaling = "PARs", layout = "circle",thresh = 0.01,top = 0.1)
+netVisual_aggregate(cellchat, signaling = "PDGF", layout = "circle",thresh = 0.01,top = 0.1)
+netVisual_aggregate(cellchat, signaling = "BTLA", layout = "circle",thresh = 0.01,top = 0.1)
+netVisual_aggregate(cellchat, signaling = "CX3C", layout = "circle",thresh = 0.01,top = 0.1)
+netVisual_aggregate(cellchat, signaling = "IL16", layout = "circle",thresh = 0.01,top = 0.1)
+netVisual_aggregate(cellchat, signaling = "CCL", layout = "circle",thresh = 0.01,top = 0.1)
+
+#=============================================================
+pathways.show <- c("CCL") 
+vertex.receiver = seq(1,8) # a numeric vector. 
+netVisual_aggregate(cellchat, signaling = pathways.show,  vertex.receiver = vertex.receiver)
+par(mfrow=c(1,1))
+netVisual_heatmap(cellchat, signaling = pathways.show, color.heatmap = "Reds")
+#=============================================================
+pathways.show <- c("NOTCH") 
+vertex.receiver = seq(1,10) # a numeric vector. 
+netVisual_aggregate(cellchat, signaling = pathways.show,  vertex.receiver = vertex.receiver)
+par(mfrow=c(1,1))
+netVisual_heatmap(cellchat, signaling = pathways.show, color.heatmap = "Reds")
+pairLR.CXCL <- extractEnrichedLR(cellchat, signaling = pathways.show, geneLR.return = FALSE)
+netVisual_aggregate(cellchat, signaling = pathways.show, layout = "circle")
+#=============================================================
+pathways.show <- c("CD46") 
+vertex.receiver = seq(1,10) # a numeric vector. 
+netVisual_aggregate(cellchat, signaling = pathways.show,  vertex.receiver = vertex.receiver)
+par(mfrow=c(1,1))
+netVisual_heatmap(cellchat, signaling = pathways.show, color.heatmap = "Reds")
+netVisual_aggregate(cellchat, signaling = "CD46", layout = "circle")
+#=============================================================
+pathways.show <- c("MHC-II") 
+vertex.receiver = seq(1,10) # a numeric vector. 
+netVisual_aggregate(cellchat, signaling = pathways.show,  vertex.receiver = vertex.receiver)
+par(mfrow=c(1,1))
+netVisual_heatmap(cellchat, signaling = pathways.show, color.heatmap = "Reds")
+netVisual_aggregate(cellchat, signaling = "MHC-II", layout = "circle")
+#=============================================================
+#=============================================================
+pathways.show <- c("IL6") 
+vertex.receiver = seq(1,10) # a numeric vector. 
+netVisual_aggregate(cellchat, signaling = pathways.show,  vertex.receiver = vertex.receiver)
+par(mfrow=c(1,1))
+netVisual_heatmap(cellchat, signaling = pathways.show, color.heatmap = "Reds")
+netVisual_aggregate(cellchat, signaling = "IL6", layout = "circle")
+#=============================================================
+#=============================================================
+pathways.show <- c("CXCL") 
+vertex.receiver = seq(1,10) # a numeric vector. 
+netVisual_aggregate(cellchat, signaling = pathways.show,  vertex.receiver = vertex.receiver)
+# Heatmap
+#=============================================================
+pathways.show <- c("CD46") 
+vertex.receiver = seq(1,10) # a numeric vector. 
+netVisual_aggregate(cellchat, signaling = pathways.show,  vertex.receiver = vertex.receiver)
+par(mfrow=c(1,1))
+netVisual_heatmap(cellchat, signaling = pathways.show, color.heatmap = "Reds")
+netVisual_aggregate(cellchat, signaling = "CD46", layout = "circle")
+par(mfrow=c(1,1))
+netVisual_heatmap(cellchat, signaling = pathways.show, color.heatmap = "Reds")
+netVisual_heatmap(cellchat, signaling = "NOTCH", color.heatmap = "Reds")
+netVisual_aggregate(cellchat, signaling = "ITGB2", layout = "circle")
+netAnalysis_contribution(cellchat, signaling = "ITGB2")
+VlnPlot(Stroma,features = "PDGFRA",group.by = "CellType2")
+
+netVisual_bubble(cellchat, sources.use = 4, signaling = c("NOTCH","CXCL","TGFb","PDGF","MIF","FN1","IL1","IL6","CD99","IL2","SPP1","L1CAM"), remove.isolate = T)
+
+netVisual_aggregate(cellchat, signaling = "NOTCH", layout = "circle")
+netAnalysis_contribution(cellchat, signaling = "NOTCH")
+pairLR.CXCL <- extractEnrichedLR(cellchat, signaling = "NOTCH", geneLR.return = FALSE)
+LR.show <- pairLR.CXCL[1:4,] # show one ligand-receptor pair
+netVisual_individual(cellchat, signaling = "NOTCH", pairLR.use = LR.show, layout = "circle",thresh = 0.01 )
+#=============================================================
+
+
+netVisual_aggregate(cellchat, signaling = "CXCL", layout = "circle")
+netAnalysis_contribution(cellchat, signaling = "CXCL")
+pairLR.CXCL <- extractEnrichedLR(cellchat, signaling = "CXCL", geneLR.return = FALSE)
+LR.show <- pairLR.CXCL[1:4,] # show one ligand-receptor pair
+netVisual_individual(cellchat, signaling = "CXCL", pairLR.use = LR.show, layout = "circle")
+#====================================================
+# Signaling role analysis on the aggregated cell-cell communication network from all signaling pathways
+cellchat@netP$pathways
+cellchat<-netAnalysis_computeCentrality(cellchat)
+signaling<-c("MIF","FN1","IL6","IL1","TGFb","PARs","TIGIT","IL2","THY1","CXCL","CCL","SELL","CD40","MHC-I")
+#signaling<-cellchat@netP$pathways
+
+ht1 <- netAnalysis_signalingRole_heatmap(cellchat, pattern = "outgoing",cluster.cols = T,cluster.rows = F,signaling = signaling)
+ht2 <- netAnalysis_signalingRole_heatmap(cellchat,signaling = signaling, pattern = "incoming",cluster.cols = T)
+ht1 + ht2
+netAnalysis_signalingRole_heatmap(cellchat,signaling = signaling, pattern = "all",cluster.cols = T,cluster.rows = F)
+#====================================================
+
+# define a positive dataset, i.e., the dataset with positive fold change against the other dataset
+pos.dataset = "Activated"
+# define a char name used for storing the results of differential expression analysis
+features.name = pos.dataset
+# perform differential expression analysis
+cellchat <- identifyOverExpressedGenes(cellchat, group.dataset = "MS", pos.dataset = pos.dataset, features.name = features.name, only.pos = FALSE, thresh.pc = 0.1, thresh.fc = 0.1, thresh.p = 1)
+#> Use the joint cell labels from the merged CellChat object
+# map the results of differential expression analysis onto the inferred cell-cell communications to easily manage/subset the ligand-receptor pairs of interest
+net <- netMappingDEG(cellchat, features.name = features.name)
+# extract the ligand-receptor pairs with upregulated ligands in LS
+net.up <- subsetCommunication(cellchat, net = net, datasets = "LS",ligand.logFC = 0.2, receptor.logFC = NULL)
+# extract the ligand-receptor pairs with upregulated ligands and upregulated recetptors in NL, i.e.,downregulated in LS
+net.down <- subsetCommunication(cellchat, net = net, datasets = "NL",ligand.logFC = -0.1, receptor.logFC = -0.1)
+```
+
+```{r}
+# Signaling role analysis on the aggregated cell-cell communication network from all signaling pathways
+gg1 <- netAnalysis_signalingRole_scatter(cellchat)
+#> Signaling role analysis on the aggregated cell-cell communication network from all signaling pathways
+# Signaling role analysis on the cell-cell communication networks of interest
+gg2 <- netAnalysis_signalingRole_scatter(cellchat, signaling = c("IL6"))
+#> Signaling role analysis on the cell-cell communication network from user's input
+gg1 + gg2
+netAnalysis_signalingRole_scatter(cellchat, signaling = c("IL6"))
+netAnalysis_signalingRole_scatter(cellchat, signaling = c("IL6"))
+```
+
+#Scatter
+```{r}
+ cellchat@netP$pathways
+#not CCL, LCK, NECTIN
+netAnalysis_signalingRole_scatter(cellchat, signaling = c("NOTCH"))
+netAnalysis_signalingRole_scatter(cellchat, signaling = c("PDGF"))
+netAnalysis_signalingRole_scatter(cellchat, signaling = c("TGFb"))
+netAnalysis_signalingRole_scatter(cellchat, signaling = c("CCL"))
+netAnalysis_signalingRole_scatter(cellchat, signaling = c("MIF"))
+netAnalysis_signalingRole_scatter(cellchat, signaling = c("TIGIT"))
+netAnalysis_signalingRole_scatter(cellchat, signaling = c("TIGIT"))
+
+#===============================================
+# Signaling role analysis on the aggregated cell-cell communication network from all signaling pathways
+ht1 <- netAnalysis_signalingRole_heatmap(cellchat, pattern = "outgoing",cluster.cols = T,cluster.rows = T)
+ht2 <- netAnalysis_signalingRole_heatmap(cellchat, pattern = "incoming")
+ht1 + ht2
+netAnalysis_signalingRole_heatmap(cellchat, pattern = "all",signaling=c("NOTCH","CD86"),cluster.cols = T)
+subcellchat <- subsetCommunication(cellchat,ligand.logFC = 0.25, receptor.logFC = 0.25)
+```
+
+#Bubble Plot
+```{r}
+cellchat@netP$pathways
+netVisual_bubble(cellchat, sources.use = "IL33.Endo", signaling = c("CXCL","CCL"), remove.isolate = T,thresh = 0.05)
+netVisual_bubble(cellchat, sources.use = "IL33.Endo", signaling = c("FGF","VEGF"), remove.isolate = T,thresh = 0.05)
+netVisual_bubble(cellchat, sources.use = "myCAF", signaling = c("CXCL","CCL"), remove.isolate = T,thresh = 0.05)
+netVisual_bubble(cellchat, sources.use = "iCAF", signaling = c("NOTCH","CXCL","TGFb","PDGF","MIF","FN1","IL1","IL6","CD99","IL2","SPP1","L1CAM"), remove.isolate = T,thresh = 0.01)
+
+#Violin
+plotGeneExpression(cellchat, signaling = "CXCL", enriched.only = T)
+plotGeneExpression(cellchat, signaling = "IL6", enriched.only = T)
+plotGeneExpression(cellchat, signaling = "TGFb", enriched.only = T)
+```
+
+
+##Calculate Signature Scores using gene_lists
+```{r}
+#small <- subset(df2, downsample = 2000)
+score_sig<-function(seurat){
+#===========================================================
+DefaultAssay(seurat)<-"RNA"
+seurat<-NormalizeData(seurat)
+seurat<-ScaleData(seurat)#,vars.to.regress = "Dataset")
+
+#seurat<-ScaleData(seurat,vars.to.regress = "Dataset")
+ex<-as.matrix(GetAssayData(object = seurat,assay = "RNA"))
+sampInfo<-data.frame(seurat@meta.data)
+genes<-rownames(seurat)
+featInfo<-data.frame(SYMBOLS=genes)
+dataset <- list(ex = ex,
+                   featInfo = featInfo,
+                   sampInfo = sampInfo
+                   )
+#rm(ex)
+#===========================================================
+expression <- as.matrix(dataset$ex)
+dataset$featInfo$gene_short_name<-(dataset$featInfo$SYMBOLS)
+genes <- dataset$featInfo
+samples <- (dataset$sampInfo)
+remove("dataset")
+samples$note <- " "
+for(i in names(gene_lists)){
+  this_gene_list <- gene_lists[[i]]
+  if(class(this_gene_list) %in% "data.frame"){
+    tmp.symbols <- this_gene_list[,1]
+    tmp.type <- as.character(this_gene_list[,2])
+  }else{
+    tmp.symbols <- this_gene_list
+    tmp.type = rep(x = i,times = length(this_gene_list))
+  }
+  tmp.indexes <- match(table = genes$gene_short_name , x = tmp.symbols)
+  tmp.symbols <- subset(tmp.symbols,!is.na(tmp.indexes))
+  tmp.type <- subset(tmp.type,!is.na(tmp.indexes))
+  tmp.indexes <- subset(tmp.indexes,!is.na(tmp.indexes))
+  samples[i] <- colMeans((expression[tmp.indexes,,drop=FALSE]),na.rm = TRUE)
+  genes[i] <- ""
+  genes[tmp.indexes,i] <- tmp.type
+  genes[i] <- as.factor(genes[[i]])
+}
+rm("this_gene_list","i","tmp.symbols","tmp.type","tmp.indexes","ex","data")
+samplesToPlot <- which((!samples$note %in% "OK"))
+
+df<-seurat
+dim(df)
+print(dim(df))
+meta1<-seurat@meta.data
+print(dim(meta1))
+
+meta2<-samples[,(dim(meta1)[2]):dim(samples)[2]]
+df@meta.data<-cbind(df@meta.data,meta2)
+DefaultAssay(seurat)<-"SCT"
+
+rm("meta1","meta2")
+ return(df)
+}
+```
+
