@@ -128,7 +128,6 @@ samples<-samples[[1]]
 #=======================
 # Total Myeloid %
 samples$EndoPercent<-as.numeric(table(Endo2$Patient)/table(PDACTrainingSet$Patient)[c(5,6,18:41)])*100
-#samples$MyeloidPercent<-as.numeric(table(Myeloid2$Patient)/table(PDACTraining$Patient))*100
 #=======================
 # CellType2 % = [CellType2]/Endo 
 x<-table(Endo2$CellType2,Endo2$Patient)
@@ -210,7 +209,6 @@ episamples<-samples
 #====================================================
 rm(Epi)
 ```
-
 
 # Find Highest signature expressing cell type
 ```{r}

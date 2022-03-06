@@ -18,12 +18,8 @@ source('/premiumDisk/khoh/Github/scTME/R/score_sig.R', echo=TRUE)
 
 #@ Lymphocytes subpopulations
 ```{r}
-high <- WhichCells(pancreas_merged, idents = c("T.Cells","B.Cells","Plasma"))
-DimPlot(pancreas_merged,cells.highlight = high,reduction = "tsne") +NoLegend()         
-Lymphocytes<-subset(pancreas_merged,CellType1%in%c("T.Cells","B.Cells","Plasma"))
-
+Lymphocytes<-subset(PDACTrainingMeta,CellType1%in%c("T.Cells","B.Cells","Plasma"))
 list_full<-SplitObject(Lymphocytes,split.by = "Dataset")
-
 int.features <- SelectIntegrationFeatures(object.list = list_full, nfeatures = 4000)
 Powers <- list_full$Powers
 list_full$Powers <- NULL
@@ -40,55 +36,23 @@ ElbowPlot(Lymphocytes,ndims=40,reduction="harmony")
 Lymphocytes <- RunUMAP(object = Lymphocytes, assay = "SCT", 
                    reduction = "harmony", 
                    min.dist = 1,
-               #    local.connectivity = 100,
                   negative.sample.rate = 20,
                    n.neighbors = 300,
                    dims = 1:18)
 Lymphocytes <- FindNeighbors(object = Lymphocytes, assay = "SCT", reduction = "harmony", dims = 1:18)
 Lymphocytes <- FindClusters(object = Lymphocytes, resolution = 1.2)#original
 Lymphocytes <- FindClusters(object = Lymphocytes, resolution = 0.5)
-
-DimPlot(Lymphocytes,label=T)
 DimPlot(Lymphocytes,label=T,group.by = c("CellType2","seurat_clusters"),reduction = "tsne")
 Idents(Lymphocytes)<-"seurat_clusters"
 Lymphocytes<-Seurat::FindSubCluster(Lymphocytes,cluster=0,graph.name ="SCT_snn",resolution = 0.2)
-table(Lymphocytes$sub.cluster)
 DimPlot(Lymphocytes,label=T,reduction = "umap",group.by = "sub.cluster")
 
-
 Lymphocytes<-RunTSNE(Lymphocytes,reduction = "harmony",dims = 1:18)
-DimPlot(Lymphocytes,reduction="tsne",label = T)
-pal <- wes_palette("Zissou1", 11)
-DimPlot(Lymphocytes,label=T,reduction = "tsne")
-DimPlot(Lymphocytes,label=T,group.by = c("CellType2","seurat_clusters"),reduction = "tsne")
-FeaturePlot(Lymphocytes, c("LAG3","HOPX","CCR7","CD4","CD8A","IL2RA","FOXP3","SELL","STMN1","IL1RL1","CD3D","NKG7","ZNF683","CAPG","CISH",""),pt.size = 0.1,reduction = "umap",order=T)
-plot_density(Lymphocytes,features = c("HOPX","LAG3","CX3CR1","CAPG","ZNF683"),reduction = "umap")
-VlnPlot(Lymphocytes,features = c("PDCD1","LAG3"))
-
-plot_density(Lymphocytes,features = c("IL7R","LAG3","CD4","MYADM","ZFP36"),reduction = "tsne")
-FeaturePlot(Lymphocytes,features = c("PDCD1","LAG3"),reduction = "tsne",order=T,label=T)
-
-DimPlot(Lymphocytes,group.by="CellType2",reduction = "tsne",label=T)
-FeaturePlot(Lymphocytes,features=c("CD4","LAYN","ENTPD1","FOXP3","TIGIT"),order=T,label=T,reduction = "tsne")
-VlnPlot(Lymphocytes,features = c("CD4","CD8A"))
-
-
-VlnPlot(Lymphocytes,features = c("FCER1A","FCGR3A","AIF1","PRSS1","TYROBP","CD163"),slot="data",assay = "RNA")
-VlnPlot(Lymphocytes,features = c("PRSS1","CD3D","LUM","KRT17","TYROBP","CD163"),slot="data",assay = "RNA")
-VlnPlot(Lymphocytes,features = c("PRSS1","CD3D","LUM","KRT17","TYROBP","CD163"),slot="counts",assay = "SCT")
-plot_density(Lymphocytes, c("CCL5","HOPX","CCR7","CD4","CD8A","IL2RA","FOXP3","IFNG1","LAG3","LEF1","IL1RL1","CD3D","NKG7","TGFB3","JAK2","CD79A","TCL1A","CXCL13","TIGIT"),size = 0.1,reduction = "umap")
-
 
 Lymphocytes<-score_sig(Lymphocytes)
 plot_density(Lymphocytes,features =c( "CD8A","CIBERSORT.T.cells.regulatory..Tregs.","CD8B","CIBERSORT.T.cells.CD4.naive","CIBERSORT.T.cells.CD8","Puram_CD8.Tcell","CIBERSORT.NK.cells.activated","NKG7","FOXP3","CD4","Puram_CD4.Tcell","Puram_T.reg","CD79A","Puram_CD6.Texhaust","CD3G","LTB","KLRD1","CD3D","Bernard_Cytotoxic.T"),size = 0.1,reduction = "tsne")
-plot_density(Lymphocytes,features=c("Chen_RegT","Chen_NaiveT","Chen_EffectorT","Chen_ExhaustT","Puram_T.reg","Puram_CD6.Texhaust","CIBERSORT.T.cells.CD4.naive","Puram_CD8.Tcell","HAVCR2"),size=0.1)
-plot_density(Lymphocytes,features =c( "CD8A","CIBERSORT.T.cells.regulatory..Tregs.","CD8B","CIBERSORT.T.cells.CD4.naive","CIBERSORT.T.cells.CD8","Puram_CD8.Tcell","CIBERSORT.NK.cells.activated","NKG7","FOXP3","CD4","Puram_CD4.Tcell","Puram_T.reg","HOPX","Puram_CD6.Texhaust","CD3G","LTB","KLRD1","CD3D","Bernard_Cytotoxic.T"),size = 0.1,reduction = "umap")
-FeaturePlot(Lymphocytes,features =c( "CD8A","CIBERSORT.T.cells.regulatory..Tregs.","CD8B","CIBERSORT.T.cells.CD4.naive","CIBERSORT.T.cells.CD8","Puram_CD8.Tcell","CIBERSORT.NK.cells.activated","NKG7","FOXP3","CD4","Puram_CD4.Tcell","Puram_T.reg","CD79A","Puram_CD6.Texhaust","CD3G","LTB","KLRD1","CD3D","Bernard_Cytotoxic.T","CXCR6"),order =T,reduction = "umap",label=T)
 
-FeaturePlot(Lymphocytes,features =c( "CD8A","CIBERSORT.T.cells.regulatory..Tregs.","CD8B","CIBERSORT.T.cells.CD4.naive","CIBERSORT.T.cells.CD8","Puram_CD8.Tcell","CIBERSORT.NK.cells.activated","NKG7","FOXP3","CD4","Puram_CD4.Tcell","Puram_T.reg","CD79A","Puram_CD6.Texhaust","CD3G","Chen_ExhaustT","KLRD1","CD3D","Bernard_Cytotoxic.T","CXCR6","IL2RG"),order =T,reduction = "umap",label=T)
-VlnPlot(Lymphocytes,features =c("CCR7","Puram_T.reg"))
 ```
-
 
 #>> Lymphocytes Heatmap
 ```{r}
@@ -97,7 +61,6 @@ PlotClusterTree(Lymphocytes)
 table(Lymphocytes$seurat_clusters)
 Idents(Lymphocytes)<-"sub.cluster"
 
-#============= Combine two IL7R into one
 small <- subset(Lymphocytes, downsample = 300)
 DefaultAssay(small)<-"RNA"
 small<-NormalizeData(small)
@@ -112,8 +75,6 @@ DoHeatmap(small, features = top10$gene,label=T) + NoLegend()
 DoHeatmap(small, features = toppval$gene,label=T) + NoLegend()
 DotPlot(Lymphocytes,features = c(unique(top10$gene),"CD4","CD8A","CD8B"),cluster.idents = T)+RotatedAxis()
 
-
-
 new.cluster.ids<-c(
 "Plasma",#6
 "Prolif.Lymph",#7
@@ -127,296 +88,11 @@ new.cluster.ids<-c(
 "Immature.B.Cell"#8
 )
 
-
 names(new.cluster.ids) <- levels(Lymphocytes)
 Lymphocytes <- RenameIdents(Lymphocytes, new.cluster.ids)
 Lymphocytes$CellType2<-Idents(Lymphocytes)
-
 #================== Subcluster CD4
 Lymphocytes<-FindSubCluster(Lymphocytes,cluster)
 #saveRDS(Lymphocytes,"Lymphocytes_Subset2021.rds")
-#CellType2
+
 #+=======================================================
-pancreas_merged$CellType2[colnames(Lymphocytes)]<-(as.character(Lymphocytes$CellType2))
-DimPlot(pancreas_merged,group.by=c("CellType1","CellType2"),order=T,label=T)
-DimPlot(pancreas_merged,group.by=c("CellType1","CellType2"),order=T,label=T,reduction = "tsne")
-DimPlot(Lymphocytes,reduction = "umap",label=T,group.by = "CellType2",label.size=6)
-DimPlot(Lymphocytes,reduction = "tsne",label=T,group.by = "CellType2",label.size = 6)
-
-
-#Compare basal/classical
-#basal/classical
-tumo<-subset(Lymphocytes,Condition%in%"Tumor")
-tumo$MT<-"Classical"
-tumo$MT[tumo$Patient%in%c("peng_T15","peng_T21","peng_T13","peng_T23","peng_T6","peng_T11","peng_T12","peng_T5","peng_T16","PDAC1","peng_T19")]<-"Basal"
-
-a <- ggplot(tumo@meta.data, aes(CellType2,fill=MT))+geom_bar(stat = "count",position = "fill")+RotatedAxis()#+coord_flip()
-print(a)
-
-#CellType2 Heatmap
-Idents(Lymphocytes)<-"CellType2"
-small <- subset(Lymphocytes, downsample = 300)
-DefaultAssay(small)<-"RNA"
-small<-NormalizeData(small)
-small<-ScaleData(small,vars.to.regress = "Patient")
-fullmarkers <- FindAllMarkers(small,min.pct = 0.1,min.diff.pct = 0.1,test.use = "MAST",only.pos = T)
-
-top10 <- fullmarkers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
-DoHeatmap(small, features = top10$gene,label=T) + NoLegend()
-
-```
-
-#>> Lymphocytes MS Heatmap
-```{r}
-Lymphocytes$MS<-"Normal"
-x<-Lymphocytes$Patient%in%c("peng_T9", "peng_T23", "peng_T11","peng_T17", "peng_T21", "peng_T8", "peng_T18", "peng_T15", "PDAC1", "PDAC2")
-Lymphocytes$MS[x]<-"Activated"
-table(Lymphocytes$MS)
-Idents(Lymphocytes)<-"MS"
-Lympho2<-subset(Lymphocytes,Condition%in%"Tumor")
-Lympho2<-subset(Lympho2,CellType2%in%c("CISH.CD8.T.RM","CTLA4.T.Reg","Effector.T.Cell","Pro.T.Cell","IL7R.CD8.T.Cell","CD8.T.RM","Naive.CD4.T.Cell","IL7R.NR4A1.TCell"))
-small <- subset(Lympho2, downsample = 300)
-DefaultAssay(small)<-"RNA"
-small<-NormalizeData(small)
-small<-ScaleData(small,vars.to.regress = "Patient")
-fullmarkers <- FindAllMarkers(Lympho2,only.pos = T)
-
-top10 <- fullmarkers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
-toppval <- fullmarkers %>% group_by(cluster) %>% top_n(n = -40, wt = p_val_adj)
-#Idents(small)<-"seurat_clusters"
-DoHeatmap(small, features = top10$gene,label=T) + NoLegend()
-
-
-```
-
-#>> Lymphocytes GSEA
-```{r}
-library(clusterProfiler)
-
-source('/premiumDisk/khoh/Github/scTME/R/convert_symbol_entrez.R', echo=TRUE)
-gsea<-NULL
-Idents(Lymphocytes)<-"CellType2"
-fullmarkers <- FindAllMarkers(Lymphocytes,min.pct = 0.1,min.diff.pct = 0.1,test.use = "MAST",only.pos = T)
-#=========================
-gsea<-NULL
-for (i in unique(Lymphocytes$CellType2)){
-c0<-  fullmarkers[fullmarkers$cluster%in%i,]%>% arrange(desc(avg_log2FC))
-gsea[[i]]<-convert_symbol_entrez(c0$gene)
-}
-#=========================
-
-ck <- compareCluster(geneCluster = gsea, fun = "enrichKEGG")
-dotplot(ck,showCategory=5)
-
-ck <- compareCluster(geneCluster = gsea, fun = "enrichGO",OrgDb="org.Hs.eg.db", pvalueCutoff=0.01)
-dotplot(ck,showCategory=5)
-
-ck <- compareCluster(geneCluster = gsea, fun = "enrichPathway")
-dotplot(ck,showCategory=5)
-#=========================
-ck1 <- compareCluster(geneCluster = gsea, fun = "enrichKEGG")
-dotplot(ck1,showCategory=5)
-gsea.gene <- ck1 %>% group_by(Cluster) %>% top_n(n = -10, wt = -log10(p.adjust))
-ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
-#=========================
-ck2 <- compareCluster(geneCluster = gsea, fun = "enrichGO",OrgDb="org.Hs.eg.db",pvalueCutoff=0.05)
-dotplot(ck2,showCategory=10)
-gsea.gene <- ck2 %>% group_by(Cluster) %>% top_n(n = -5, wt = -log10(p.adjust))
-ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
-#=========================
-ck3 <- compareCluster(geneCluster = gsea, fun = "enrichPathway",pvalueCutoff=0.05)
-dotplot(ck3,showCategory=10)
-gsea.gene <- ck3 %>% group_by(Cluster) %>% top_n(n = -3, wt = -log10(p.adjust))
-ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
-#==========================================
-source('./R/getGOLevel.R', echo=TRUE)
-# Get Low level GO IDs to filter against
-term1 <- c(getGOLevel(ont=c("MF"), level=c(1)),getGOLevel(ont=c("CC"), level=c(1)),getGOLevel(ont=c("BP"), level=c(1)))
-term2 <- c(getGOLevel(ont=c("MF"), level=c(1,2)),getGOLevel(ont=c("CC"), level=c(1,2)),getGOLevel(ont=c("BP"), level=c(1,2)))
-term3 <- c(getGOLevel(ont=c("MF"), level=c(1,2,3)),getGOLevel(ont=c("CC"), level=c(1,2,3)),getGOLevel(ont=c("BP"), level=c(1,2,3)))
-term4 <- c(getGOLevel(ont=c("MF"), level=c(1,2,3)),getGOLevel(ont=c("CC"), level=c(1,2,3,4)),getGOLevel(ont=c("BP"), level=c(1,2,3,4)))
-
-ck <- compareCluster(geneCluster = gsea, fun = "enrichGO",OrgDb="org.Hs.eg.db")
-ck@compareClusterResult<-ck@compareClusterResult[-which(ck@compareClusterResult$ID%in%term3),]
-dotplot(ck,showCategory=5)
-
-cc@result<-cc@result[-which(cc@result$ID%in%term3),]
-excludeGOlevel(cc)
-
-#===============================================================
-write.csv(ck3 , file = "GO_BP_test.csv", row.names=FALSE)
-```
-
-
-
-
-#>> Lympho2 DESeq2
-```{r}
-library(DESeq2)
-Lympho2<-subset(Lymphocytes,Condition%in%"Tumor")
-Lympho2<-subset(Lympho2,CellType2%in%c("CISH.CD8.T.RM","CTLA4.T.Reg","Effector.T.Cell","Pro.T.Cell","IL7R.CD8.T.Cell","CD8.T.RM","Naive.CD4.T.Cell","IL7R.NR4A1.TCell"))
-Lympho2$note<-"Ok"
-x<-Lympho2$Patient%in%c("peng_T4","peng_T18")
-Lympho2$note[x]<-"Exclude"
-#newdf<-pseudobulk(Lympho2)
-newdf<-Seurat::AggregateExpression(Lympho2,group.by = "Patient",slot = "counts",assays = "SCT")
-newdf<-newdf$SCT[!rowSums(newdf$SCT)<10,]
-
-meta<-data.frame("Patient"=colnames(newdf))
-meta$MS<-"Normal"
-x<-meta$Patient%in%c("peng_T9", "peng_T23", "peng_T11","peng_T17", "peng_T21", "peng_T8", "peng_T18", "peng_T15", "PDAC1", "PDAC2")
-meta$MS[x]<-"Activated"
-mRNA <- DESeqDataSetFromMatrix(countData =as.matrix(newdf),
-                              colData = meta,
-                              design= ~ MS)
-mRNA <- estimateSizeFactors( mRNA )
-
-dds <- DESeq2::DESeq(mRNA)
-res <- results(dds)
-resLFC <- lfcShrink(dds, coef="MS_Normal_vs_Activated")
-##Volcano
-
-p1<-EnhancedVolcano(res,
-    lab = rownames(res),
-    x = 'log2FoldChange',
-      xlim = c(-3,3),
-    y = "padj",
-    ylim = c(0,5),
-       pCutoff = 0.05,
-   pointSize = 2,
-   labSize = 3,
-    FCcutoff = 1.5,
-   typeConnectors = "open",
-   titleLabSize = 12,
- subtitleLabSize = 8,
-    colConnectors = 'black')
-p1
-#================================
-ids<-bitr(rownames(res), fromType = "SYMBOL", toType = "ENTREZID", OrgDb=org.Hs.eg.db)
-dedup_ids = ids[!duplicated(ids[c("SYMBOL")]),]
-df2 = res[rownames(res) %in% dedup_ids$SYMBOL,]
-df2$Y = dedup_ids$ENTREZID
-kegg_gene_list <- df2$log2FoldChange
-names(kegg_gene_list) <- df2$Y
-kegg_gene_list<-na.omit(kegg_gene_list)
-kegg_gene_list = sort(kegg_gene_list, decreasing = T)
-#======================================
-pt<-gsePathway(kegg_gene_list,
-               minGSSize = 10,
-               maxGSSize = 500,
-               pvalueCutoff = 0.01)
-dotplot(pt,showCategory=10)
-
-pt@result$type = "upregulated"
-pt@result$type[pt@result$NES < 0] = "downregulated"
-dotplot(pt,showCategory=50)+facet_grid(.~type)
-#===========================================================
-pt<-gseKEGG(kegg_gene_list,
-               minGSSize = 10,
-        #  OrgDb = "org.Hs.eg.db",
-               maxGSSize = 500,
-               pvalueCutoff = 0.05)
-dotplot(pt,showCategory=20)
-
-pt@result$type = "upregulated"
-pt@result$type[pt@result$NES < 0] = "downregulated"
-dotplot(pt,showCategory=50)+facet_grid(.~type)
-#===========================================================
-gsea.gene1<-pt[pt@result$type%in%"upregulated"]
-p1<-ggplot(gsea.gene1,aes(x=-log10(p.adjust),y=reorder(Description,-log10(p.adjust))))+   geom_segment( aes(size=5, xend=0, yend=reorder(Description,-log10(p.adjust))), color="lightblue") 
-  
-gsea.gene2<-pt[pt@result$type%in%"downregulated"]
-p2<-ggplot(gsea.gene2,aes(x=-log10(p.adjust),y=reorder(Description,-log10(p.adjust))))+ geom_segment( aes( size=5,xend=0, yend=reorder(Description,-log10(p.adjust))), color="brown") 
-  cowplot::plot_grid(p1,p2,ncol = 1)
-```
-
-
-#>> Lympho Pseudobulk + Calculate Gene Signatures
-```{r}
-source('/premiumDisk/khoh/Github/scTME/R/pseudobulk_score.R', echo=TRUE)
-source('/premiumDisk/khoh/Github/scTME/R/pseudobulk.R', echo=TRUE)
-newdf<-pseudobulk(Lymphocytes)
-output<-pseudobulk_score(newdf)
-samples<-output[[1]]
-genes<-output[[2]]
-samplesToPlot <- which((!samples$note %in% "OK"))
-```
-
-#>> Lymphocyte PCA
-```{r}
-tmp<-samples[,-c(1:2)]
-rownames(tmp)<-samples[,1]
-#tmp<-samples
-#==========================================================
-feature.means<-as.numeric(apply(X=tmp,MARGIN=2,FUN=mean))
-feature.stdevs<-as.numeric(apply(X=tmp,MARGIN=2,FUN=sd))
-featureKeep<-which(feature.stdevs>quantile(feature.stdevs,0.2,na.rm=T))
-featureKeep<-c("Moffitt.Normal.25","Moffitt.Activated.25","Grunwald_Desert","Grunwald_Reactive","Chen_cCAF","Wang_meCAF","Wang_iCAF","Wang_apCAF","Wang_StellateCAF1","Wang_StellateCAF2","qPSC","aPSC","Tuveson_myCAF","Tuveson_iCAF","Tuveson_panCAF","Tuveson_apCAF","Bernard_Myofibroblast","Bernard_i_Myofibroblast","Glycolytic")
-library(FactoMineR)
-library(factoextra)
-# compute distance measure
-new_pca <- PCA(tmp[,featureKeep])
-fviz_screeplot(new_pca, addlabels = TRUE)
-var <- get_pca_var(new_pca)
-fviz_contrib(new_pca, choice = "var", axes = 1, top = 10)
-fviz_contrib(new_pca, choice = "var", axes = 2, top = 10)
-fviz_contrib(new_pca, choice = "var", axes = 3, top = 10)
-
-#==================================================
-fviz_pca_ind(new_pca, col.ind = "cos2",
-             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
-             axes=c(1,2),
-             repel = TRUE # Avoid text overlapping (slow if many points)
-             )
-# Biplot of individuals and variables
-fviz_pca_biplot(new_pca, repel = TRUE,top=10,axes=c(1,2))
-```
-
-#>> Lymphocyte Stratify
-```{r}
-tumo<-subset(Lymphocytes,Condition%in%"Tumor")
-tumo$MT<-"Classical"
-tumo$MT[tumo$Patient%in%c("peng_T12","peng_T11","peng_T16","peng_T19","PDAC1")]<-"Basal"
-
-a <- ggplot(Lymphocytes@meta.data, aes(CellType2,fill=MS))+geom_bar(stat = "count",position = "fill")+RotatedAxis()#+coord_flip()
-print(a)
-#=============================
-
-
-Lymphocytes$MS<-"Normal"
-x<-Lymphocytes$Patient%in%c("peng_T9", "peng_T23", "peng_T11","peng_T17", "peng_T21", "peng_T8", "peng_T18", "peng_T15", "PDAC1", "PDAC2")
-Lymphocytes$MS[x]<-"Activated"
-table(Lymphocytes$MS)
-#========================================
-Idents(Lymphocytes)<-"MS"
-Lymph<-subset(Lymphocytes,Condition%in%"Tumor")
-Lymph<-subset(Lymph,CellType1%in%"T.Cells")
-meta<-Lymph@meta.data
-small <- subset(Lymph, downsample = 3000)
-DefaultAssay(small)<-"RNA"
-small<-NormalizeData(small)
-small<-ScaleData(small,vars.to.regress = "Dataset")
-fullmarkers <- FindAllMarkers(small,min.pct = 0.1,min.diff.pct = 0.2,test.use = "MAST",only.pos = F)
-
-top10 <- fullmarkers %>% group_by(cluster) %>% top_n(n = 20 ,wt = avg_log2FC)
-toppval <- fullmarkers %>% group_by(cluster) %>% top_n(n = -20, wt = p_val_adj)
-#Idents(small)<-"seurat_clusters"
-DoHeatmap(small, features = top10$gene,label=T) + NoLegend()
-DoHeatmap(small, features = toppval$gene,label=T) + NoLegend()
-
-
-heatmap(table(Lymph$CellType2,Lymph$MS),scale="none")
-a <- ggplot(Lymph@meta.data, aes(CellType2,fill=MS))+geom_bar(stat = "count",position = "fill")+RotatedAxis()#+coord_flip()
-print(a)
-
-a <- ggplot(Lymph@meta.data, aes(MS,fill=CellType2))+geom_bar(stat = "count",position = "fill")+RotatedAxis()#+coord_flip()
-print(a)
-
-DimPlot(subset(Lymph,Condition%in%"Tumor"),split.by = "MS",group.by = "CellType2",reduction = "tsne")
-DimPlot(subset(Lymph,Condition%in%"Tumor"),split.by = "MS",group.by = "CellType2",reduction = "tsne")
-
-FeatureScatter(Lymph,feature1 = "CD8A",feature2="FOXP3")
-VlnPlot(Lymph,feature1 = "CD8A",feature2="CD4")
-VlnPlot(subset(Lymph,CellType2%in%c("CTLA4.T.Reg","IL7R.CD8.T.Cell","Naive.CD4.T.Cell","Resident.CD8.T.Cell","KLRF1.CD8.T.Cell")),features = c("CD8A","TIGIT","CTLA4","FOXP3","LAYN","GZMK","GNLY","ENTPD1","CCR7","PDCD1","IFNG","LAG3","CD27"),group.by = "CellType2",split.by = "MS",pt.size = 0.1,log = T,flip = T)
-```
-

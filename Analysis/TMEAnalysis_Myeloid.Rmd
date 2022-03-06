@@ -18,11 +18,8 @@ source('/premiumDisk/khoh/Github/scTME/R/score_sig.R', echo=TRUE)
 
 #@ Myeloid
 ```{r}
-#pancreas_merged <- readRDS("~/premiumDisk/khoh/PDACTrainingSet2021v3.rds")
-Myeloid<-subset(pancreas_merged,CellType1%in%c("Myeloid"))
-#Myeloid<-subset(Myeloid,nFeature_RNA>300)
-#Myeloid<-subset(pancreas_merged,seurat_clusters%in%c(4))
-
+#PDACTraining <- readRDS("~/premDisk/khoh/PDACTrainingSet2021v3.rds")
+Myeloid<-subset(PDACTraining,CellType1%in%c("Myeloid"))
 DefaultAssay(Myeloid)<-"SCT"
 list_full<-SplitObject(Myeloid,split.by = "Dataset")
 rm(full)
@@ -53,44 +50,13 @@ DimPlot(Myeloid,label=T,reduction = "umap")
 Myeloid<-Seurat::FindSubCluster(Myeloid,cluster=1,graph.name ="SCT_snn",resolution = 0.2)
 table(Myeloid$sub.cluster)
 DimPlot(Myeloid,label=T,reduction = "umap",group.by = "sub.cluster")
-
-DimPlot(Myeloid,label=T,reduction = "umap")
-DimPlot(Myeloid,group.by="Phase")
 Myeloid<-RunTSNE(Myeloid,reduction = "harmony",dims = 1:10)
 DimPlot(Myeloid,reduction = "tsne",label=T)
-FeaturePlot(Myeloid,features=c("FCER1A","THBS1","LYVE1","SPP1","C1QA","FOLR2","CX3CR1","CCR2","IL1B","PDCD1","IFI6"),order=T,label=T)
-FeaturePlot(Myeloid,features=c("CD1C","FCGR3A","C1QA","LAMP3","TYROBP","THBD"),order=T,label=T)
-
-
-VlnPlot(Myeloid,features = c("FCER1A","FCGR3A","AIF1","PRSS1","TYROBP","CD163"),slot="data",assay = "RNA")
-VlnPlot(Myeloid,features = c("PRSS1","CD3D","LUM","KRT17","TYROBP","CD163"),slot="data",assay = "RNA")
-VlnPlot(Myeloid,features = c("PRSS1","CD3D","LUM","KRT17","TYROBP","CD163"),slot="counts",assay = "SCT")
-DimPlot(Myeloid,label=T)
-FeaturePlot(Myeloid, c("LYZ","FCGR3A","CD163","CPA2","PIGN","S100A8","PLD3","CCL7","CCL19","NMNAT3","CD1C","FSIP2","CD163","NKAPL","CLEC4E","CFAP206"),order=T,reduction = "umap")
 Myeloid<-score_sig(Myeloid)
-FeaturePlot(Myeloid,features =c( "Bernard_Lymphocyte","Tuveson_ConventionalDC","Tuveson_AlternativeMac","Tuveson_ConventionalDC","Tuveson_ResidentMac","Tuveson_ClassicalMonocyte","Bernard_Dendritic"),order=T,label=T)
 plot_density(Myeloid,features =c( "Bernard_Lymphocyte","CIBERSORT.Macrophages.M1","Tuveson_AlternativeMac","Tuveson_ConventionalDC","Tuveson_ResidentMac","Tuveson_LangerhansDC_A","Tuveson_LangerhansDC_B","Tuveson_ClassicalMonocyte","Villani_CD1C.DC","Bernard_Dendritic","CIBERSORT.Macrophages.M2","Villani_pan.mono"),size = 0.1,method = "wkde",reduction = "umap")
-plot_density(Myeloid, c("LYZ","FCER1A","APOE","CD14","CSTA","S100A8","PLD3","CCL7","CCL19","BIRC3","CD1C","FCGR3A","CD163","IL17RA","SMEA3","GRN"),size = 0.1,reduction = "umap")
-FeatureScatter(Myeloid,feature1 ="Tuveson_ClassicalMonocyte",feature2= "Tuveson_AlternativeMac",pt.size=0.1)
-FeatureScatter(Myeloid,feature1 ="Tuveson_ClassicalMonocyte",feature2= "Tuveson_AlternativeMac",group.by = "MS",pt.size = 0.1)
-FeatureScatter(Myeloid,feature1 ="Tuveson_ClassicalMonocyte",feature2= "FCGR3A",group.by = "MS",pt.size = 0.1)
-FeatureScatter(Myeloid,feature1 ="CD14",feature2= "FCGR3A",group.by = "CellType2",pt.size = 0.1)
-FeatureScatter(Myeloid,feature1 ="MRC1",feature2= "FCGR3A",group.by = "MS",pt.size = 0.1)
-#+=======================
-Myeloid.Monocle<-run_monocle(Myeloid)
-plot_cells(Myeloid.Monocle, 
-           color_cells_by = 'cluster',
-           label_groups_by_cluster=T,
-           label_leaves=FALSE,
-           group_label_size = 5,
-           label_branch_points=T)
-
-FeatureScatter(Myeloid,feature1="TYROBP",feature2="MMP14",pt.size = 0.8)
-
-FeatureScatter(Myeloid,feature1="FCGR3A",feature2="CD163",pt.size = 0.8)
 ```
 
-#>>   CellType2 FindMarkers - Heatmap
+#>>   FindMarkers - Heatmap
 ```{r}
 Myeloid<-BuildClusterTree(Myeloid,dims = 1:10,reorder = T)
 PlotClusterTree(Myeloid)
@@ -99,23 +65,12 @@ Idents(Myeloid)<-"sub.cluster"
 small <- subset(Myeloid, downsample = 600)
 DefaultAssay(small)<-"RNA"
 small<-NormalizeData(small)
-#small<-ScaleData(small, vars.to.regress = "Dataset")
-#markers3 <- FindAllMarkers(small,min.pct = 0.2,test.use = "MAST",features = new.genes)
 small<-ScaleData(small,rownames(small))
 fullmarkers <- FindAllMarkers(Myeloid,min.pct = 0.1,min.diff.pct = 0.1,test.use = "MAST",only.pos = F)
-
-
 top10 <- fullmarkers %>% group_by(cluster) %>% top_n(n = 20, wt = avg_log2FC)
 toppval <- fullmarkers %>% group_by(cluster) %>% top_n(n = -20, wt = p_val_adj)
-#Idents(small)<-"seurat_clusters"
-DoHeatmap(small, features = intersect(top10$gene,c(gene_lists$secretome,gene_lists$contact,gene_lists$ecm)),label=T) + NoLegend()
 DoHeatmap(small, features = top10$gene,label=T) + NoLegend()
-
 DoHeatmap(small, features = toppval$gene,label=T) + NoLegend()
-DotPlot(small,features = top10$gene)+RotatedAxis()
-
-DotPlot(small,features = intersect(top10$gene,c(tf)))+RotatedAxis()
-
 DimPlot(pancreas_merged,group.by = c("Dataset","Condition","CellType1"))
 plot_density(Myeloid, c("MS4A4A","CD14","MAFB","ITGAE","CSTB","FCER1A","CD1C","S100A8","PLD3","CCL7","CCL19","SPP1","CD1C","FCGR3A","CD163","IL17RA","IRF8","BATF3","NOTCH2","KLF4","RUNX1","CLEC9A","EPCAM","MMP9","SPI1","CBFB","GPR34","HSPA6","ITGAX"),size = 0.1,reduction = "umap")
 plot_density(Myeloid, c("MMP14","FCGR3A","GPR34","CX3CR1","MS4A4A","HSP1A1"),size = 0.1,reduction = "umap",method = "wkde")
@@ -137,243 +92,6 @@ names(new.cluster.ids) <- levels(Myeloid)
 Myeloid <- RenameIdents(Myeloid, new.cluster.ids)
 Myeloid$CellType2<-Idents(Myeloid)
 #saveRDS(Myeloid,"Myeloid_Subset202.rds")
-#Set CellType2 Idents
-pancreas_merged$CellType2<-as.character(pancreas_merged$CellType1)
-pancreas_merged$CellType2[colnames(Myeloid)]<-(as.character(Myeloid$CellType2))
-DimPlot(pancreas_merged,group.by=c("CellType1","CellType2"),order=T,label=T)
-DimPlot(pancreas_merged,group.by=c("CellType1","CellType2"),order=T,label=T,reduction = "tsne")
-#====================================================================
-DimPlot(Myeloid,group.by="CellType2",order=T,label=T,reduction = "umap",label.size = 6)
-DimPlot(Myeloid,group.by="CellType2",order=T,label=T,reduction = "tsne",label.size = 6)
 
-DimPlot(df2,group.by="CellType2",order=T,label=T)
-
-list<-c("CellType2")
-for(i in list){
-df<-as.data.frame(table(Myeloid@meta.data[[i]]))
-#df <- as.data.frame(table(full)[[i]])
-colnames(df) <- c("Label" ,"Count")
-pie <- ggplot(df, aes(x = "", y=Count, fill = factor(Label))) + 
-  geom_bar(width = 1, stat = "identity") +
-  theme(axis.line = element_blank(), 
-        plot.title = element_text(hjust=0.5)) + 
-  labs(fill="class", 
-       x=NULL, 
-       y=NULL, 
-       title=paste0("Pie Chart of Groups - ",i), 
-       caption="Source: Full Integrated Pancreas scRNA-seq Data")
-pie<- pie + coord_polar(theta = "y", start=0)#+ facet_grid(. ~ k17Status)
-print(pie)+ facet_grid(. ~ Condition)
-}
-
-VlnPlot(Myeloid,features =c("CD14","FCGR3A","CD163","CCR2","CCL2","CCL18","MMP9","CX3CR1","SELENOP","CSF1R","FCGR3B","C1QA","CLEC10A","FCGR3A","IL1B","LAMP3"),group.by = "seurat_clusters",pt.size = 0.1)
-plot_density(Myeloid,c("TREM2","GPR34","C1QA","CIBERSORT.Macrophages.M0","SIGLEC1","SELENOP","FCGR3A","FOLR2"),reduction = "umap")
-plot_density(Myeloid,features=c("CIBERSORT.Dendritic.cells.activated","CIBERSORT.Dendritic.cells.resting","Tuveson_ConventionalDC","Tuveson_LangerhansDC_A","NMNAT3"),reduction="umap",order=T)
-DotPlot(Myeloid,features=c("S100A8","CD14","FCGR3A","CD163","CCR2","CCL2","CCL18","MMP9","CX3CR1","SELENOP","CSF1R","FCGR3B","C1QA","CLEC10A","IL1B","NMNAT3"),group.by = "seurat_clusters")+RotatedAxis()
 DotPlot(Myeloid,features=c("S100A12","CD14","FCGR3A","CD163","APOC1","CCL2","CCL18","MMP9","CX3CR1","SELENOP","CSF1R","FCGR3B","C1QA","CLEC10A","IL1B","LAMP3"),group.by = "CellType2")+RotatedAxis()
-
-```
-
-```{r}
-Myeloid$MS<-"Normal"
-x<-Myeloid$Patient%in%c("peng_T9", "peng_T23", "peng_T11","peng_T17", "peng_T21", "peng_T8", "peng_T18", "peng_T15", "PDAC1", "PDAC2")
-Myeloid$MS[x]<-"Activated"
-table(Myeloid$MS)
-
-#=========================================
-meta<-Myeloid@meta.data
-heatmap(table(Myeloid$MS,Myeloid$CellType2))
-
-p<-ggplot(subset(meta,Condition%in%c("Tumor")), aes(Patient, CellType2)) +
-  geom_jitter(aes(color = Patient), size = 0.1,alpha=0.5)+RotatedAxis()+NoLegend()+facet_grid(~MS)
-print(p)
-#========================================
-MyeloidT<-subset(Myeloid,Condition%in%"Tumor")
-VlnPlot(MyeloidT,features=c("CD163","FCGR3A"),group.by = "CellType2",split.by = "MS")
-VlnPlot(Myeloid,features=c("CLEC9A","CLEC10A","SNX3","GPR34","SELENOP"))
-VlnPlot(Myeloid,features=c("CD14","GPNMB","IL1RN","CCL22","FCGR3A","PPARG","MMP9","CCL18","CXCR1","LYVE1","CXCL14","MSR1","ALDH2","GPR34"))
-
-```
-
-
-#>> Myeloid GSEA
-```{r}
-library(clusterProfiler)
-
-source('/premiumDisk/khoh/Github/scTME/R/convert_symbol_entrez.R', echo=TRUE)
-gsea<-NULL
-Idents(Myeloid)<-"Condition"
-myeloidmarkers <- FindAllMarkers(Myeloid,min.pct = 0.1,min.diff.pct = 0.1,test.use = "MAST",only.pos = F)
-#=========================
-
-#=========================
-gsea<-NULL
-Idents(Myeloid)<-"CellType2"
-#small<-subset(Myeloid,downsample=1000)
-DefaultAssay(small)<-"RNA"
-#small<-ScaleData(Myeloid)
-fullmarkers <- FindAllMarkers(Myeloid,min.pct = 0.2,min.diff.pct = 0.1,test.use = "MAST",only.pos = T,logfc.threshold = 0.1)
-#=========================
-gsea<-NULL
-for (i in unique(Myeloid$seurat_clusters)){
-#c0<-  fullmarkers[fullmarkers$cluster%in%i,]%>% arrange(desc(-p_val_adj))
-c0<-  fullmarkers[fullmarkers$cluster%in%i,]%>% arrange(desc(avg_log2FC))
-gsea[[i]]<-convert_symbol_entrez(c0$gene)
-}
-#=========================
-
-ck <- compareCluster(geneCluster = gsea, fun = "enrichKEGG")
-dotplot(ck,showCategory=16)
-
-ck <- compareCluster(geneCluster = gsea, fun = "enrichGO",OrgDb="org.Hs.eg.db")
-dotplot(ck,showCategory=20)
-ck <- compareCluster(geneCluster = gsea, fun = "enrichPathway")
-dotplot(ck,showCategory=20)
-
-
-#================================================================
-ck1 <- compareCluster(geneCluster = gsea, fun = "enrichKEGG")
-dotplot(ck1,showCategory=5)
-gsea.gene <- ck1 %>% group_by(Cluster) %>% top_n(n = -10, wt = -log10(p.adjust))
-ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
-
-write.csv(cluster_summary , file = "GO_BP_test.csv", row.names=FALSE)
-```
-
-
-#>> Myeloid CellType2 Pseudobulk
-```{r}
-GO_0140375_Immune <-read.table("/premiumDisk/khoh/Github/scTME/data/GO_0140375_Immune.txt", quote="\"", comment.char="")
-kegg_cytokine <- read_csv("Github/scTME/data/kegg_cytokine.txt",    skip = 1)
-tf<-read.csv("/premiumDisk/khoh/Github/scTME/data/TF_genes.txt",header = F)
-#Cytokine Heatmap
-library(pheatmap)
-library(RColorBrewer)
-genestouse<-c(GO_0140375_Immune$V1,kegg_cytokine$`> Cytokine-cytokine receptor interaction`)
-#genestouse<-tf$V1
-#=========================================
-Idents(Myeloid)<-"CellType2"
-small <- subset(Myeloid, downsample = 3000)
-fullmarkers <- FindAllMarkers(Myeloid,min.diff.pct = 0.2)
-genestouse<-genestouse[genestouse%in%fullmarkers$gene]
-agg<-log1p(Seurat::AverageExpression(Myeloid,group.by="CellType2")$RNA)
-
-#agg<-agg[rowSums(agg)>10000,]
-#==========================================
-rows<-rownames(agg)%in%genestouse
-pheatmap(agg[rows,],scale = "column",clustering_method = "ward.D2",color = colorRampPalette(rev(brewer.pal(n = 9, name ="RdBu")))(50))
-pheatmap(agg[rows,],scale = "column",clustering_method = "median",color = colorRampPalette(rev(brewer.pal(n = 9, name ="RdBu")))(50))
-#==========================================
-
-pheatmap(agg[rows,])
-```
-
-#>> Myeloid Pseudobulk + Calculate Gene Signatures
-```{r}
-source('/premiumDisk/khoh/Github/scTME/R/pseudobulk_score.R', echo=TRUE)
-source('/premiumDisk/khoh/Github/scTME/R/pseudobulk.R', echo=TRUE)
-source('/premiumDisk/khoh/Github/scTME/R/pseudobulk_all.R', echo=TRUE)
-newdf<-pseudobulk(Myeloid)
-#newdf<-pseudobulk_all(Myeloid)
-samples<-pseudobulk_score(newdf)
-#=======================
-samples<-samples[[1]]
-samples$MS<-"Normal"
-x<-samples$Patient%in%c("peng_T9", "peng_T23", "peng_T11","peng_T17", "peng_T21", "peng_T8", "peng_T18", "peng_T15", "PDAC1", "PDAC2")
-samples$MS[x]<-"Activated"
-p<-ggplot(samples, aes(CIBERSORT.Macrophages.M1, CIBERSORT.Macrophages.M2,label=Patient)) +geom_text_repel()+
-  geom_point(aes(color = MS), size = 3,alpha=0.5)+RotatedAxis()+NoLegend()
-print(p)
-p1<-ggplot(samples, aes(Tuveson_AlternativeMac, Tuveson_ClassicalMonocyte,label=Patient)) +geom_text_repel()+
-  geom_point(aes(color = MS), size = 3,alpha=0.5)+RotatedAxis()+NoLegend()
-print(p1)
-#================================
-p2<-ggplot(samples, aes(CIBERSORT.Macrophages.M1, CIBERSORT.Macrophages.M2,label=Patient)) +geom_text_repel()+
-  geom_point(aes(color = MS), size = 3,alpha=0.5)+RotatedAxis()+NoLegend()
-print(p2)
-#===============================
-p2<-ggplot(samples, aes(CIBERSORT.Monocytes, IFNG_Production,label=Patient)) +geom_text_repel()+
-  geom_point(aes(color = MS), size = 3,alpha=0.5)+RotatedAxis()+NoLegend()
-print(p2)
-
-p2<-ggplot(samples, aes(Hosein_Mac2.1, Hosein_Mac2.2,label=Patient)) +geom_text_repel()+
-  geom_point(aes(color = MS), size = 3,alpha=0.5)+RotatedAxis()+NoLegend()
-print(p2)
-```
-
-
-#Calculate Gene Signatures
-```{r}
-newdf<-NormalizeData(newdf)
-ex<-log2(newdf+1)
-#ex<-newdf
-
-sampInfo<-data.frame(colnames(newdf))
-#sampInfo<-data.frame(meta$orig.ident)
-#sampInfo<-data.frame(sub@meta.data)
-genes<-rownames(newdf)
-featInfo<-data.frame(SYMBOLS=genes)
-dataset <- list(ex = ex,
-                   featInfo = featInfo,
-                   sampInfo = sampInfo
-                   )
-#rm(ex)
-#===========================================================
-expression <- as.matrix(dataset$ex)
-dataset$featInfo$gene_short_name<-(dataset$featInfo$SYMBOLS)
-genes <- dataset$featInfo
-samples <- (dataset$sampInfo)
-remove("dataset")
-samples$note <- " "
-for(i in names(gene_lists)){
-  this_gene_list <- gene_lists[[i]]
-  if(class(this_gene_list) %in% "data.frame"){
-    tmp.symbols <- this_gene_list[,1]
-    tmp.type <- as.character(this_gene_list[,2])
-  }else{
-    tmp.symbols <- this_gene_list
-    tmp.type = rep(x = i,times = length(this_gene_list))
-  }
-  tmp.indexes <- match(table = genes$gene_short_name , x = tmp.symbols)
-  tmp.symbols <- subset(tmp.symbols,!is.na(tmp.indexes))
-  tmp.type <- subset(tmp.type,!is.na(tmp.indexes))
-  tmp.indexes <- subset(tmp.indexes,!is.na(tmp.indexes))
-  samples[i] <- colMeans((expression[tmp.indexes,,drop=FALSE]),na.rm = TRUE)
-  genes[i] <- ""
-  genes[tmp.indexes,i] <- tmp.type
-  genes[i] <- as.factor(genes[[i]])
-}
-rm("this_gene_list","i","tmp.symbols","tmp.type","tmp.indexes","ex")
-
-#genesToPlot<-which(genes$gene_short_name) %in% neoplastic.cds[fData(neoplastic.cds)$use_for_ordering,])
-
-samplesToPlot <- which((!samples$note %in% "OK"))
-```
-
-```{r}
-
-Myeloid$MS<-"Normal"
-x<-Myeloid$Patient%in%c("peng_T9", "peng_T23", "peng_T11","peng_T17", "peng_T21", "peng_T8", "peng_T18", "peng_T15", "PDAC1", "PDAC2")
-Myeloid$MS[x]<-"Activated"
-table(Myeloid$MS)
-
-meta<-Myeloid@meta.data
-heatmap(table(Myeloid$MS,Myeloid$CellType2))
-
-p<-ggplot(subset(meta,Condition%in%c("Tumor")), aes(Patient, CellType2)) +
-  geom_jitter(aes(color = Patient), size = 0.1,alpha=0.5)+RotatedAxis()+NoLegend()+facet_grid(~MS)
-print(p)
-a <- ggplot(meta, aes(x=CellType2,fill=MS))
-a<-a+geom_bar(position="fill")+RotatedAxis()
-print(a)
-a <- ggplot(meta, aes(x=MS,fill=CellType2))
-a<-a+geom_bar(position="fill")+RotatedAxis()
-print(a)
-
-VlnPlot(Myeloid,features = "LAMP3",split.by="MS")
-
-p<-ggplot(samples, aes(Moffitt.Normal.25, Moffitt.Activated.25)) +
-  geom_point(aes(color = Patient), size = 1,alpha=0.5)+RotatedAxis()+NoLegend()
-print(p)
-
 ```

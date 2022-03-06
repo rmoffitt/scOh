@@ -1,0 +1,318 @@
+---
+title: "Data Processing"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+#Load Packages
+```{r}
+library(Seurat)
+library(harmony)
+library(Nebulosa)
+library(biomaRt)
+library(dplyr)
+gene_lists <- readRDS("/premiumDisk/khoh/Github/scTME/data/gene_lists.rds")
+source('/premiumDisk/khoh/Github/scTME/R/score_sig.R', echo=TRUE)
+```
+
+# 1). Load Peng
+```{r , include=FALSE}
+#Original Peng Raw Data as list of Seurat Objects per patient
+peng <- readRDS("/datadrive/khoh/output/peng_list_full.rds")
+peng_N1 <- peng$peng_N1
+peng$peng_N1 <- NULL
+peng <- merge(peng_N1, y = c(peng),  project = "scTME", merge.data = TRUE)
+meta<-as.data.frame(peng@meta.data)
+#=============================================
+ex<-GetAssayData(peng,assay = "RNA",slot="counts")
+all<-rownames(ex)
+x<-grep(all, pattern="^HLA")
+all[x]<-c("HLA-DQA1","HLA-F","HLA-A","HLA-E","HLA-C","HLA-B","HLA-DRA","HLA-DRB5","HLA-DRB1","HLA-DQB1","HLA-DOB","HLA-DMB","HLA-DMA","HLA-DOA","HLA-DPA1","HLA-DPB1","HLA-DQB2","HLA-G","HLA-F-AS1","HLA-V","HLA-J","HLA-L","HLA-DPB2","HLA-DRB6")
+all[x]
+rownames(ex)<-all
+sub<-which(rownames(ex)%in%make.names(gene_lists$ribosomal))
+ex<-ex[-sub,]
+#===================================================
+peng<-CreateSeuratObject(counts = ex,meta.data = meta,min.cells = 10 ,min.features=300)
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+peng <- CellCycleScoring(peng, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+```
+
+## Subset for PC genes
+```{r}
+#===================================================
+genes<-rownames(peng)
+# Look at Protein Coding genes only?
+mart <- useMart("ENSEMBL_MART_ENSEMBL", host = "www.ensembl.org")
+mart <- useDataset("hsapiens_gene_ensembl", mart)
+annotLookup <- getBM(
+  mart = mart,
+  attributes = c(
+    "hgnc_symbol",
+    "entrezgene_id",
+    "ensembl_gene_id",
+    "gene_biotype"),
+  filter = "hgnc_symbol",
+  values = genes,
+  uniqueRows=TRUE)
+table(annotLookup$gene_biotype)
+annotLookup$hgnc_symbol
+new.genes<-annotLookup[which(annotLookup$gene_biotype%in%c("protein_coding","IG_V_gene","IG_C_gene","IG_D_gene","IG_J_gene","TR_C_gene","TR_V_gene","TR_D_gene","TR_J_gene")),]$hgnc_symbol
+length(new.genes)
+#===================================================
+peng<-peng[new.genes,]
+dim(peng)
+length(new.genes)
+ggplot(peng@meta.data, aes(x=nFeature_RNA, color=orig.ident)) +geom_histogram(fill="white", alpha=0.5, position="identity",bins =100)+geom_vline(xintercept=838)+geom_vline(xintercept=300)
+```
+
+# 2). Load Qadir
+```{r}
+#===================================================
+Qadir <- readRDS("/premiumDisk/khoh/Github/scTME/Qadir.Seurat.rds")
+Qadir[["percent.mt"]] <- PercentageFeatureSet(Qadir, pattern = "^MT-")
+Qadir<-subset(Qadir,percent.mt<10)
+ex<-as.matrix(GetAssayData(Qadir,assay = "RNA",slot="counts"))
+meta<-Qadir@meta.data
+sub<-which(rownames(ex)%in%make.names(gene_lists$ribosomal))
+ex<-ex[-sub,]
+sub<-which(rownames(ex)%in%make.names(gene_lists$MT))
+sub<-grep(rownames(ex),pattern="^MT-")
+ex<-ex[-sub,]
+#===================================================
+Qadir<-CreateSeuratObject(counts = ex,meta.data = meta,min.cells = 10 ,min.features=300)
+Qadir$Dataset<-"Qadir"
+#Set 10% MT
+Qadir <- CellCycleScoring(Qadir, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+#==========
+```
+## Subset for PC genes
+```{r}
+#===================================================
+genes<-rownames(Qadir)
+# Look at Protein Coding genes only?
+mart <- useMart("ENSEMBL_MART_ENSEMBL", host = "www.ensembl.org")
+mart <- useDataset("hsapiens_gene_ensembl", mart)
+annotLookup <- getBM(
+  mart = mart,
+  attributes = c(
+    "hgnc_symbol",
+    "entrezgene_id",
+    "ensembl_gene_id",
+    "gene_biotype"),
+  filter = "hgnc_symbol",
+  values = genes,
+  uniqueRows=TRUE)
+table(annotLookup$gene_biotype)
+new.genes<-annotLookup[which(annotLookup$gene_biotype%in%c("protein_coding","IG_V_gene","IG_C_gene","IG_D_gene","IG_J_gene","TR_C_gene","TR_V_gene","TR_D_gene","TR_J_gene")),]$hgnc_symbol
+#===================================================
+Qadir<-Qadir[new.genes,]
+dim(Qadir)
+length(new.genes)
+#===================================================
+
+ggplot(Qadir@meta.data, aes(x=nFeature_RNA, color=orig.ident)) +geom_histogram(fill="white", alpha=0.5, position="identity",bins =100)+geom_vline(xintercept=2000)+geom_vline(xintercept=300)
+Qadir<-subset(Qadir,nFeature_RNA>2000)
+dim(Qadir)
+```
+
+# 3). Load Powers
+```{r}
+#===================================================
+powers<- readRDS("/home/khoh/powers/pdac1pdac2.seurat.rds")
+ex<-GetAssayData(powers,assay = "RNA",slot="counts")
+powers$Patient<-powers$orig.ident
+powers$Dataset<-"Powers"
+powers$Condition<-"Tumor"
+meta<-as.data.frame(powers@meta.data)
+all<-rownames(ex)
+x<-grep(all, pattern="^HLA")
+all[x]
+summary(powers$percent.mt)
+#===================================================
+sub<-which(rownames(ex)%in%make.names(gene_lists$ribosomal))
+ex<-ex[-sub,]
+#===================================================
+Powers<-CreateSeuratObject(counts = ex,meta.data = meta,min.cells = 10 ,min.features=300)
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+Powers <- CellCycleScoring(Powers, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+```
+
+## Subset for PC genes
+```{r}
+#===================================================
+genes<-rownames(Powers)
+# Look at Protein Coding genes only?
+mart <- useMart("ENSEMBL_MART_ENSEMBL", host = "www.ensembl.org")
+mart <- useDataset("hsapiens_gene_ensembl", mart)
+annotLookup <- getBM(
+  mart = mart,
+  attributes = c(
+    "hgnc_symbol",
+    "entrezgene_id",
+    "ensembl_gene_id",
+    "gene_biotype"),
+  filter = "hgnc_symbol",
+  values = genes,
+  uniqueRows=TRUE)
+table(annotLookup$gene_biotype)
+new.genes<-annotLookup[which(annotLookup$gene_biotype%in%c("protein_coding","IG_V_gene","IG_C_gene","IG_D_gene","IG_J_gene","TR_C_gene","TR_V_gene","TR_D_gene","TR_J_gene")),]$hgnc_symbol
+Powers<-Powers[new.genes,]
+dim(Powers)
+length(new.genes)
+
+ggplot(Powers@meta.data, aes(x=nFeature_RNA, color=orig.ident)) +geom_histogram(fill="white", alpha=0.5, position="identity",bins =100)+geom_vline(xintercept=500)
+Powers<-subset(Powers,nFeature_RNA>500)
+```
+
+# 4). Load Segerstolpe
+```{r}
+#===================================================
+Segerstolpe <- readRDS("/premiumDisk/khoh/segerstolpe.rds")
+ex<-Segerstolpe@assays$data$counts
+sub<-which(rownames(ex)%in%make.names(gene_lists$ribosomal))
+ex<-ex[-sub,]
+rownames(ex)<-gsub("[.]","-",rownames(ex))
+meta<-data.frame(Segerstolpe@colData)
+Segerstolpe<-CreateSeuratObject(counts = ex,meta.data = meta,min.cells = 10 ,min.features=300)
+Segerstolpe<-subset(Segerstolpe,disease=="normal"&cell_quality%in%"OK")
+Segerstolpe$orig.ident<-droplevels(Segerstolpe$orig.ident)
+Segerstolpe$Patient<-Segerstolpe$orig.ident
+#===================================================
+Segerstolpe$Dataset<-"Segerstolpe"
+Segerstolpe$Condition<-"Normal"
+#Set 10% MT
+Segerstolpe <- CellCycleScoring(Segerstolpe, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+#==========
+```
+
+## Subset for PC genes
+```{r}
+#===================================================
+genes<-rownames(Segerstolpe)
+# Look at Protein Coding genes only?
+mart <- useMart("ENSEMBL_MART_ENSEMBL", host = "www.ensembl.org")
+mart <- useDataset("hsapiens_gene_ensembl", mart)
+annotLookup <- getBM(
+  mart = mart,
+  attributes = c(
+    "hgnc_symbol",
+    "entrezgene_id",
+    "ensembl_gene_id",
+    "gene_biotype"),
+  filter = "hgnc_symbol",
+  values = genes,
+  uniqueRows=TRUE)
+table(annotLookup$gene_biotype)
+new.genes<-annotLookup[which(annotLookup$gene_biotype%in%c("protein_coding","IG_V_gene","IG_C_gene","IG_D_gene","IG_J_gene","TR_C_gene","TR_V_gene","TR_D_gene","TR_J_gene")),]$hgnc_symbol
+#===================================================
+Segerstolpe<-Segerstolpe[new.genes,]
+#===================================================
+ggplot(Segerstolpe@meta.data, aes(x=nFeature_RNA, color=orig.ident)) +geom_histogram(fill="white", alpha=0.5, position="identity",bins =100)+geom_vline(xintercept=2000)+geom_vline(xintercept=300)
+Segerstolpe<-subset(Segerstolpe,nFeature_RNA>800)
+Segerstolpe$Patient<-"MetaPatient"
+```
+
+# 5). Full Merge
+```{r message=FALSE, warning=FALSE}
+full<-merge(Powers,y=c(Qadir,peng,Segerstolpe))
+dim(full)
+hist(full$nCount_RNA)
+hist(full$nFeature_RNA)
+#remove cells over 30,000 counts
+#remove cells over 8000 features
+full<-subset(full,nCount_RNA<=30000)
+full<-subset(full,nFeature_RNA<=8000)
+summary(full$nCount_RNA)
+summary(full$nFeature_RNA)
+#remove cells w < 1st quartile Counts
+#remove cells w < 1st quartile features
+#full<-subset(full,nCount_RNA>=838.3)
+#full<-subset(full,nFeature_RNA>=586)
+dim(full)
+#rm(peng,Powers,Qadir,Segerstolpe)
+list_full<-SplitObject(full,split.by = "Patient")
+for (i in 1:length(list_full)) {
+    list_full[[i]] <- SCTransform(list_full[[i]], verbose = FALSE,return.only.var.genes = T,variable.features.n = 8000,vars.to.regress = "Phase")
+}
+full.int.features <- SelectIntegrationFeatures(object.list = list_full, nfeatures = 8000,fvf.nfeatures=5000)
+length(full.int.features)
+peng_N1 <- list_full$peng_N1
+list_full$peng_N1 <- NULL
+PDACTraining <- merge(peng_N1, y = c(list_full),  project = "scTME", merge.data = TRUE)
+rm(list_full)
+VariableFeatures(PDACTraining) <- full.int.features
+PDACTraining <- RunPCA(object = PDACTraining, assay = "SCT", npcs = 50)
+PDACTraining$CC.Difference <- PDACTraining$S.Score - PDACTraining$G2M.Score
+PDACTraining <- RunHarmony(object = PDACTraining,
+                                    assay.use = "SCT",
+                                    reduction = "pca",
+                                    dims.use = 1:50,
+                                    group.by.vars = c("Dataset"),
+                                    plot_convergence = TRUE)
+ElbowPlot(PDACTraining,ndims=50,reduction="harmony")
+PDACTraining<-RunUMAP(PDACTraining,reduction="harmony",
+                         min.dist=0.8,
+                      #   n.neighbors = 300,
+                         local.connectivity = 80,
+                         dims = 1:30,
+                         assay="SCT")
+PDACTraining<-FindNeighbors(PDACTraining,reduction = "harmony",dims = 1:30)
+PDACTraining<-FindClusters(PDACTraining,resolution = 0.2)
+DimPlot(PDACTraining,label=T)
+
+PDACTraining<-RunTSNE(PDACTraining,reduction = "harmony",dims = 1:30)
+DimPlot(PDACTraining,reduction = "tsne",label=T)
+DimPlot(PDACTraining,reduction = "tsne",label=T,group.by = "Condition",cols = c("lightblue","red"))
+
+#rm(PDACTraining)
+rm(full)
+rm(list_full)
+rm(Powers)
+rm(Qadir)
+rm(peng)
+```
+
+### Full Heatmap
+```{r}
+#Idents(pancreas_merged)<-"seurat_clusters"
+small <- subset(PDACTraining, downsample = 300)
+DefaultAssay(small)<-"RNA"
+small<-NormalizeData(small)
+
+small<-ScaleData(small,vars.to.regress = "Patient")
+fullmarkers <- FindAllMarkers(small,min.pct = 0.1,min.diff.pct = 0.1,test.use = "MAST",only.pos = T)
+top10 <- fullmarkers %>% group_by(cluster) %>% top_n(n = 15, wt = avg_log2FC)
+toppval <- fullmarkers %>% group_by(cluster) %>% top_n(n = -15, wt = p_val_adj)
+#Idents(small)<-"seurat_clusters"
+DoHeatmap(small, features = top10$gene,label=T) + NoLegend()
+DoHeatmap(small, features = toppval$gene,label=T) + NoLegend()
+```
+
+# 6). Set Cell Type
+```{r}
+#Idents(PDACTraining)<-"seurat_clusters"
+new.cluster.ids <- 
+  c("Epithelium", #0==
+    "Epithelium",#1==
+    "T.Cells",#2==
+    "Fibroblast",#3===
+    "Endothelium",#4===
+    "Myeloid",#5====
+    "B.Cells",#6===
+    "Epithelium",#7===
+    "Epithelium",#8====
+    "Epithelium",#9
+    "Plasma",#10
+    "Endocrine",#11
+    "Fibroblast")#12
+
+names(new.cluster.ids) <- levels(PDACTraining)
+PDACTraining <- RenameIdents(PDACTraining, new.cluster.ids)
+PDACTraining$CellType1<-Idents(PDACTraining)
+DimPlot(PDACTraining,label=T,group.by = "seurat_clusters")
+
+saveRDS(PDACTraining,"PDACTrainingSet2021v3.rds")
+```
