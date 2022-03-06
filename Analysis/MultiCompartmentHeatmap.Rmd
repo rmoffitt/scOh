@@ -1,0 +1,1284 @@
+---
+title: "MultiHeatmap"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Load Packages
+```{r message=FALSE, warning=FALSE}
+library(ggrepel)
+library(Seurat)
+library(harmony)
+library(tidyverse)  # data manipulation
+library(cluster)    # clustering algorithms
+library(factoextra) # clustering algorithms & visualization
+library(Nebulosa)
+library(biomaRt)
+library(dplyr)
+library(pheatmap)
+library(gridExtra)
+library(DESeq2)
+gene_lists <- readRDS("/premDisk/khoh/Github/scTME/data/gene_lists.rds")
+source('/premDisk/khoh/Github/scTME/R/score_sig.R', echo=TRUE)
+source('/premDisk/khoh/Github/scTME/R/pseudobulk_all.R', echo=TRUE)
+source('/premDisk/khoh/Github/scTME/R/pseudobulk_score.R', echo=TRUE)
+source('/premDisk/khoh/Github/scTME/R/pseudobulk.R', echo=TRUE)
+
+```
+#=============================================================
+
+# Stromal Subtype - Stroma DEG
+```{r,fig.height=8}
+#Load Stroma Subset
+#================================================
+Stroma2<-subset(Stroma,Condition%in%"Tumor") # Subset analysis to PDAC derived patients
+Stroma2<-subset(Stroma2,CellType2%in%c("qPSC","smPSC","iCAF","Schwann","myCAF","csCAF")) 
+# Ignore minor cell populations (IL11 CAFs, myocytes)
+Stroma2$note<-"OK"
+# Set Intermediate Patient Labels
+x<-Stroma2$Patient%in%c("peng_T6","peng_T4","peng_T3","peng_T24","peng_T2","peng_T13","peng_T14","peng_T22","peng_T16","peng_T8","peng_T15","peng_T18")
+Stroma2$note[x]<-"Exclude" # Exclude
+Stroma2<-subset(Stroma2,note%in%"OK")
+#================================================ #Aggregate cell expression by Patients
+newdf<-Seurat::AggregateExpression(Stroma2,group.by = "Patient",slot = "counts",assays = "SCT")
+newdf<-newdf$SCT
+meta<-data.frame("Patient"=colnames(newdf))
+meta$MS<-"Normal"
+x<-meta$Patient%in%c("PDAC1","peng_T17","peng_T21","peng_T23","peng_T11","peng_T9","PDAC2")
+meta$MS[x]<-"Activated"
+#===========================================================
+mRNA <- DESeqDataSetFromMatrix(countData =as.matrix(newdf),
+                              colData = meta,
+                              design= ~ MS)
+mRNA <- estimateSizeFactors( mRNA )
+mRNA$MS <- factor(mRNA$MS, levels = c("Activated","Normal"))
+mRNA$MS <- relevel(mRNA$MS, ref = "Normal")
+mRNA <- mRNA[ rowSums(counts(mRNA)) > 30, ]
+dds <- DESeq2::DESeq(mRNA)
+res <- results(dds)
+#===========================================================
+##Volcano
+x<-res$log2FoldChange
+df<-data.frame(rownames(res),x)
+#============================================
+resSig <- subset(res, padj < 0.05&abs(log2FoldChange)>0.8)
+resSig$SYMBOL<-rownames(resSig)
+resSig<-subset(resSig,SYMBOL%in%c(tf,secretome,ecm,contact))
+resSig<-data.frame(resSig@listData)
+y <- mutate(resSig, ordering = abs(log2FoldChange)) %>%
+        arrange(desc(ordering)) %>%top_n(20)
+ggplot(resSig, aes(log2FoldChange, forcats::fct_reorder(SYMBOL, log2FoldChange), fill = padj), showCategory=(n*2)) + 
+      geom_bar(stat='identity') + 
+      scale_fill_continuous(low='red', high='blue', guide=guide_colorbar(reverse=TRUE)) + 
+      theme_minimal() + ylab(NULL)
+
+#preliminary list of factors 
+#out<-intersect(resSig$SYMBOL,c(gene_lists$secretome,gene_lists$ecm,gene_lists$contact))
+out<-c("ITGA7","PGF","LAMA3","NFASC","CSF1","PDGFA","EDNRB","TNFRSF1B","ANGPT1","CD36","NOTCH3","THBS4","CSPG4","NOTCH1","WNT6","NPY1R","PDGFB","PODXL","CD4","SEMA4C","MCAM","IL3RA","CCL14","VIPR1","CCL21","LRRC4B","MPZ","NTRK2","FZD4","JAG1","F2RL3","PTH1R","ICAM2","CDH11","COL1A1","INHBA","THBS2","POSTN","PTHLH","ITGA11","FN1","OXT","WNT5A","SDC1","PDGFC","FZD1","NRP2","CD99","COMP","COL6A3","PLXNC1","TNFSF4","VEGFC","FGFR2","PDGFD","FGFR1","ANXA1","TNFSF10","IGF1R","IL20RA","TNFSF11","PDCD1LG2","IL1R1","CLEC2B","TSLP","BMP4","TGFBR1")
+#out<-c("EPAS1","TBX2","KLF9","HEYL","EBF1","SOX13","FOXF1","PPARG","L3MBTL4","BCL6","ZNF219","CASZ1","PRDM16","IRX2","MLXIPL","TCF15","KLF6","WT1","ZNF469","ZBED1","MITF","LEF1","CREB3L1","BHLHE41","ZNF521") #Transcription Factor
+#============================================================
+newdf<-pseudobulk(Stroma2)
+samples<-pseudobulk_score(newdf)
+genes<-samples[[2]]
+expression<-samples[[3]]
+samples<-samples[[1]]
+samples$MS<-"Normal"
+x<-samples$Patient%in%c("PDAC1","peng_T17","peng_T21","peng_T23","peng_T11","peng_T9","PDAC2")
+samples$MS[x]<-"Activated"
+samples$StromaPercent<-as.numeric(table(Stroma2$Patient)/table(PDACTrainingMeta$Patient)[c(1,2,3,4,5,6,11,13,15,16,18,22,24,26)])*100 # Calculate Total Stroma % / Patient
+#========================= # Calculate Subpopulation Percentages
+x<-table(Stroma2$CellType2,Stroma2$Patient)
+y<-as.vector(table(Stroma2$Patient))
+prop<-round(t(x)/y,4)*100
+samples$qPSC.p<-prop[,3]
+samples$smPSC.p<-prop[,4]
+samples$iCAF.p<-prop[,5]
+samples$myCAF.p<-prop[,7]
+samples$csCAF.p<-prop[,8]
+#===========================================================
+```
+
+#Stroma Heatmap
+```{r}
+#genes1<-gene_lists[c("Moffitt.F13_NormalStroma.top100","Moffitt.F5_ActivatedStroma.top100")]
+genes1<-out
+genesToPlot<-which(rownames(newdf) %in% unlist(genes1))
+these.symbols<-genes$SYMBOLS[genesToPlot]
+geneOrder=numeric(length(these.symbols))
+for (i in 1:length(genes1)){
+print(i)
+geneOrder=geneOrder + (these.symbols %in% genes1[[i]])*(2^i)
+}
+geneOrder<-order(geneOrder)
+#=============================================================
+samplesToPlot <- which((!samples$note %in% "OK"))
+clustergenes <- c(which(genes$SYMBOL %in% gene_lists$Moffitt.F13_NormalStroma.top100),
+                 which(genes$SYMBOL %in% gene_lists$Moffitt.F5_ActivatedStroma.top100))
+# do clustering and make semiautomatic calls
+sampletree <- ConsensusClusterPlus::ConsensusClusterPlus(d = t(scale(scale=FALSE,center=TRUE,
+                                                                     x = t(as.matrix(expression[clustergenes,samplesToPlot])))),
+                                                         seed = 1234,
+                                                         pFeature = 0.8,
+                                                         pItem = 0.8,
+                                                         maxK = 3,
+                                                         reps=800,
+                                                         distance="pearson",clusterAlg="km"
+                                                         )[[3]]$consensusTree  # 
+tmp.cluster <- c("Normal","Activated","Intermediate")[cutree(tree = sampletree, k = 3)]
+samples$MS <- factor("NA",levels = c("Normal","Activated","Intermediate"))
+samples$MS <- tmp.cluster
+#===========================================================
+RowSideColors <- getSideColors(
+  sampInfo = genes,
+
+  sampleTracks = c("secretome",
+                   "contact",
+                   "ecm"
+                 
+                 ),
+  colorlists = list(c("white","blue"),
+                     c("white","brown"),
+                     c("white","brown")
+                   
+                    ) , drop.levels = FALSE)
+
+ColSideColors <- getSideColors(
+  sampInfo = samples,
+  sampleTracks = c( #"names.full.split.",
+                    "Moffitt.Normal.25",
+                    "Moffitt.Activated.25",
+                    "MS",
+                    "StromaPercent",
+                    "myCAF.p",
+                    "iCAF.p",
+                    "csCAF.p",
+                    "qPSC.p",
+                    "smPSC.p"
+              ),
+
+                   
+  colorlists = list( #c("red","yellow","green","blue","pink", "purple", "gray", "black", "brown"),
+                        c("white","blue"),
+                      c("white","brown"),
+                      c("lightblue","purple","brown"),
+                       c("grey","darkblue"),
+                      c("white","brown"),
+                          c("white","brown"),
+                       c("white","brown"),
+                       c("white","brown"),
+                      c("white","blue")
+                   ))
+myPalette <- colorRampPalette(c("darkblue","blue", "white", "red","darkred"))(n = 100) 
+
+#plot the heatmap
+rowmydata<-as.matrix((newdf[genesToPlot,samplesToPlot]))
+heatmap.3(as.matrix(expression[genesToPlot,]), 
+
+Rowv=convert_order_to_dendrogram(geneOrder),
+ distfun=function(x) {as.dist((1-cor(t(x)))/2)},
+#  Col =TRUE,
+Colv=as.dendrogram(sampletree),
+  dendrogram = "both",
+  trace="none",
+  margins =c(5,5),
+  labRow = genes[genesToPlot,"gene_short_name"],
+  labCol = samples$rna_match_id[samplesToPlot],
+  col=myPalette,breaks = seq(from = -3,to  = 3, length.out = length(myPalette)+1),
+  scale=c("row"),
+  cexRow = 0.8,
+  RowSideColors = t(RowSideColors$SideColors[genesToPlot,]),
+  RowSideColorsSize = dim(RowSideColors$SideColors)[2]*1.5,
+  ColSideColors = ColSideColors$SideColors[samplesToPlot,],
+  ColSideColorsSize = dim(ColSideColors$SideColors)[2]*1,
+  lwid = c(1,5),lhei = c(1,5))
+
+stromasampletree<-sampletree
+sampletreetrim<-sampletree
+#===========================================================
+```
+
+# Stroma MS+Intermediate Violin Plot   
+```{r}
+Stroma2<-subset(Stroma,Condition%in%"Tumor")
+Stroma2$MS<-"Normal"
+x<-Stroma2$Patient%in%c("peng_T6","peng_T4","peng_T3","peng_T24","peng_T2","peng_T13","peng_T14","peng_T22","peng_T16","peng_T8","peng_T15","peng_T18")
+Stroma2$MS[x]<-"Intermediate"
+x<-Stroma2$Patient%in%c("PDAC1","peng_T17","peng_T21","peng_T23","peng_T11","peng_T9","PDAC2")
+Stroma2$MS[x]<-"Activated"
+
+Stroma2<-score_sig(Stroma2)
+
+a<-VlnPlot(Stroma2,features=c("ActivatedStromaSig"),group.by="MS",pt.size = 0.01)
+b<-VlnPlot(Stroma2,features=c("NormalStromaSig"),group.by="MS",pt.size = 0.01)
+cowplot::plot_grid(a,b)
+```
+
+# >> Myeloid Heatmap
+```{r,fig.height=8}
+Myeloid2<-subset(Myeloid,Condition%in%"Tumor")
+Myeloid2$note<-"OK"
+x<-Myeloid2$Patient%in%c("peng_T6","peng_T4","peng_T3","peng_T24","peng_T2","peng_T13","peng_T14","peng_T22","peng_T16","peng_T8","peng_T15","peng_T18")
+Myeloid2$note[x]<-"Exclude"
+Myeloid2<-subset(Myeloid2,note%in%"OK")
+#==============================================================
+newdf<-Seurat::AggregateExpression(Myeloid2,group.by = "Patient",slot = "counts",assays = "SCT")
+newdf<-newdf$SCT
+meta<-data.frame("Patient"=colnames(newdf))
+
+meta$MS<-"Normal"
+x<-meta$Patient%in%c("PDAC1","peng_T17","peng_T21","peng_T23","peng_T11","peng_T9","PDAC2")
+meta$MS[x]<-"Activated"
+#===========================================================
+mRNA <- DESeqDataSetFromMatrix(countData =as.matrix(newdf),
+                              colData = meta,
+                              design= ~ MS)
+mRNA <- estimateSizeFactors( mRNA )
+mRNA$MS <- factor(mRNA$MS, levels = c("Activated","Normal"))
+mRNA$MS <- relevel(mRNA$MS, ref = "Normal")
+mRNA <- mRNA[ rowSums(counts(mRNA)) > 30, ]
+dds <- DESeq2::DESeq(mRNA)
+res <- results(dds)
+##Volcano
+x<-res$log2FoldChange
+df<-data.frame(rownames(res),x)
+#============================================
+resSig <- subset(res, padj < 0.1&abs(log2FoldChange)>0.8)
+resSig$SYMBOL<-rownames(resSig)
+resSig<-subset(resSig,SYMBOL%in%c(tf,secretome,ecm,contact))
+resSig<-data.frame(resSig@listData)
+y <- mutate(resSig, ordering = abs(log2FoldChange)) %>%
+        arrange(desc(ordering)) %>%top_n(30)
+ggplot(resSig, aes(log2FoldChange, forcats::fct_reorder(SYMBOL, log2FoldChange), fill = padj), showCategory=(n*2)) + 
+      geom_bar(stat='identity') + 
+      scale_fill_continuous(low='red', high='blue', guide=guide_colorbar(reverse=TRUE)) + 
+      theme_minimal() + ylab(NULL)
+#out<-which(rownames(mRNA)%in%c("SOX4","SOX11","ZNF281","ZNF469","PRRX1","SMYD3","RUNX1","TWIST1","RORB","SALL4","WT1",""))
+out<-intersect(resSig$SYMBOL,c(secretome,contact))
+out<-c("CCL14","ESAM","NOTCH4","JAM2","NOTCH4","NR2C2","TNXB","SOX17","BLC6B","SELL","LIFR","CXCL13","C34","SOX18","HNF4A","SELP","TEK","KDR","ELK4","AKNA","MLXIPL","YY2","CXCL3","IL1A","CXCL2","CCL13","COL6A3","POSTN","IL6","TNF","SPP1","XBP1","SOX4","SAA1","CXCL1","NR4A2","IL10","CCL18","CD209","CCL22","CXCL8","CCL20","NPR3","CCL3","IL1RL2","KLF4","CCL14","ESAM","JAM2","PODXL","TNXB","NOTCH4","NACC2","SOX17","CD34","ZNF189","SELL","CXCL13","BCL6B","EFNB2","IL33","LIFR","KLF4","CXCL3","CXCL2","SPP1","CCL4","IL6","CD99","CCL22","IL1A","CCL13","IL10","TNF","SOX4","CD209")
+#===============================================
+Myeloid2<-subset(Myeloid,Condition%in%"Tumor")
+Myeloid2$note<-"OK"
+x<-Myeloid2$Patient%in%c("peng_T6","peng_T4","peng_T3","peng_T24","peng_T2","peng_T13","peng_T14","peng_T22","peng_T16","peng_T8","peng_T15","peng_T18")
+Myeloid2$note[x]<-"Exclude"
+Myeloid2<-subset(Myeloid2,note%in%"OK")
+newdf<-pseudobulk(Myeloid2)
+samples<-pseudobulk_score(newdf)
+genes<-samples[[2]]
+expression<-samples[[3]]
+samples<-samples[[1]]
+samples$MS<-"Normal"
+x<-samples$Patient%in%c("PDAC1","peng_T17","peng_T21","peng_T23","peng_T11","peng_T9","PDAC2")
+samples$MS[x]<-"Activated"
+#===========================================================
+x<-table(Myeloid2$CellType2,Myeloid2$Patient)
+y<-as.vector(table(Myeloid2$Patient))
+
+prop<-round(t(x)/y,4)*100
+
+samples$ResMac<-prop[,2]
+samples$ClassicalMono<-prop[,4]
+samples$SPP1TAM<-prop[,6]
+samples$M1TAM<-prop[,5]
+samples$mDC<-prop[,3]
+samples$GRNTAM<-prop[,7]
+samples$LAMP3DC<-prop[,1]
+
+#===========================================================
+
+genes1<-out
+genesToPlot<-which(rownames(newdf) %in% unlist(genes1))
+these.symbols<-genes$SYMBOLS[genesToPlot]
+geneOrder=numeric(length(these.symbols))
+for (i in 1:length(genes1)){
+print(i)
+geneOrder=geneOrder + (these.symbols %in% genes1[[i]])*(2^i)
+}
+geneOrder<-order(geneOrder)
+RowSideColors <- getSideColors(
+  sampInfo = genes,
+
+  sampleTracks = c("secretome",
+                   "ecm",
+                   "contact"
+                 
+                 ),
+  colorlists = list(c("white","blue"),
+                        c("white","brown"),
+                     c("white","brown")
+                   
+                    ) , drop.levels = FALSE)
+
+ColSideColors <- getSideColors(
+  sampInfo = samples,
+  sampleTracks = c( #"names.full.split.",
+                    "M1TAM",
+                    "SPP1TAM",
+                    "MS",
+                    "ClassicalMono",
+                    "ResMac",
+                    "mDC",
+                    "GRNTAM",
+                    "LAMP3DC"
+              ),
+
+                   
+  colorlists = list( #c("red","yellow","green","blue","pink", "purple", "gray", "black", "brown"),
+                        c("white","blue"),
+                      c("white","brown"),
+                      c("lightblue","brown"),
+                       c("white","red"),
+                      c("white","brown"),
+                       c("white","red"),
+                      c("white","brown"),
+                      c("white","green")
+                   ))
+
+myPalette <- colorRampPalette(c("darkblue","blue", "white", "red","darkred"))(n = 299) 
+#===========================================================
+samplesToPlot <- which((!samples$note %in% "OK"))
+
+#plot the heatmap
+rowmydata<-as.matrix((newdf[genesToPlot,samplesToPlot]))
+rkm <- kmeans(t(scale(t(rowmydata))), 2)
+heatmap.3(as.matrix(expression[genesToPlot,]), 
+Rowv=TRUE,
+ distfun=function(x) {as.dist((1-cor(t(x)))/2)},
+Colv=as.dendrogram(stromasampletree),
+  dendrogram = "both",
+  trace="none",
+  margins =c(5,5),
+  labRow = genes[genesToPlot,"gene_short_name"],
+  labCol = samples$rna_match_id[samplesToPlot],
+  col=myPalette,breaks = seq(from = -3,to  =3, length.out = length(myPalette)+1),
+  scale=c("row"),
+  cexRow = 0.8,
+  RowSideColors = t(RowSideColors$SideColors[genesToPlot,]),
+  RowSideColorsSize = dim(RowSideColors$SideColors)[2]*1.5,
+  ColSideColors = ColSideColors$SideColors[samplesToPlot,],
+  ColSideColorsSize = dim(ColSideColors$SideColors)[2]*1,
+  lwid = c(1,5),lhei = c(1,5))
+#===========================================================
+```
+
+# >> Endo Heatmap
+```{r,fig.height=8}
+Endo2<-subset(Endo,Condition%in%"Tumor")
+Endo2$note<-"OK"
+x<-Endo2$Patient%in%c("peng_T6","peng_T4","peng_T3","peng_T24","peng_T2","peng_T13","peng_T14","peng_T22","peng_T16","peng_T8","peng_T15","peng_T18")
+Endo2$note[x]<-"Exclude"
+Endo2<-subset(Endo2,note%in%"OK")
+newdf<-Seurat::AggregateExpression(Endo2,group.by = "Patient",slot = "counts",assays = "SCT")
+newdf<-newdf$SCT
+meta<-data.frame("Patient"=colnames(newdf))
+meta$MS<-"Normal"
+x<-meta$Patient%in%c("PDAC1","peng_T17","peng_T21","peng_T23","peng_T11","peng_T9","PDAC2")
+meta$MS[x]<-"Activated"
+#===========================================================
+mRNA <- DESeqDataSetFromMatrix(countData =as.matrix(newdf),
+                              colData = meta,
+                              design= ~ MS)
+mRNA <- estimateSizeFactors( mRNA )
+mRNA$MS <- factor(mRNA$MS, levels = c("Activated","Normal"))
+mRNA$MS <- relevel(mRNA$MS, ref = "Normal")
+mRNA <- mRNA[ rowSums(counts(mRNA)) > 30, ]
+dds <- DESeq2::DESeq(mRNA)
+res <- results(dds)
+##Volcano
+x<-res$log2FoldChange
+df<-data.frame(rownames(res),x)
+#============================================
+resSig <- subset(res, padj < 0.1&abs(log2FoldChange)>0.8)
+resSig$SYMBOL<-rownames(resSig)
+resSig<-subset(resSig,SYMBOL%in%c(tf,secretome,ecm,contact))
+resSig<-data.frame(resSig@listData)
+y <- mutate(resSig, ordering = abs(log2FoldChange)) %>%
+        arrange(desc(ordering)) %>%top_n(30)
+ggplot(resSig, aes(log2FoldChange, forcats::fct_reorder(SYMBOL, log2FoldChange), fill = padj), showCategory=(n*2)) + 
+      geom_bar(stat='identity') + 
+      scale_fill_continuous(low='red', high='blue', guide=guide_colorbar(reverse=TRUE)) + 
+      theme_minimal() + ylab(NULL)
+#out<-which(rownames(mRNA)%in%c("SOX4","SOX11","ZNF281","ZNF469","PRRX1","SMYD3","RUNX1","TWIST1","RORB","SALL4","WT1"))
+out<-intersect(resSig$SYMBOL,c(secretome,ecm,contact))
+out<-c("ZNF160","CX3CL1","ETS1","LIFR","ZSCAN18","CD96","LEPR","TNFRSF1B","IL15RA","FGF7","CXCL3","CD44","TGIF1","COL6A1","COL6A2","VEGFA","ZNF703","C3","MIF","SOX4","CXCL8","TGFBR1","MARCO","NOTCH2","IL2RA","SDC4","TNFRSF12A","TNFRSF11B","CXCL2","IL1B","LRP1","FGF18")
+#=============================================== # Heatmap
+Endo2<-subset(Endo,Condition%in%"Tumor")
+Endo2$note<-"OK"
+x<-Endo2$Patient%in%c("peng_T6","peng_T4","peng_T3","peng_T24","peng_T2","peng_T13","peng_T14","peng_T22","peng_T16","peng_T8","peng_T15","peng_T18")
+Endo2$note[x]<-"Exclude"
+Endo2<-subset(Endo2,note%in%"OK")
+newdf<-pseudobulk(Endo2)
+samples<-pseudobulk_score(newdf)
+genes<-samples[[2]]
+expression<-samples[[3]]
+samples<-samples[[1]]
+samples$MS<-"Normal"
+x<-samples$Patient%in%c("PDAC1","peng_T17","peng_T21","peng_T23","peng_T11","peng_T9","PDAC2")
+samples$MS[x]<-"Activated"
+x<-table(Endo2$CellType2,Endo2$Patient)
+y<-as.vector(table(Endo2$Patient))
+
+prop<-round(t(x)/y,4)*100
+
+samples$Tip_EC<-prop[,1]
+samples$MT1X_EC<-prop[,2]
+samples$Venous_EC<-prop[,3]
+samples$Arterial_EC<-prop[,4]
+
+#===========================================================
+genes1<-out
+genesToPlot<-which(rownames(newdf) %in% unlist(genes1))
+these.symbols<-genes$SYMBOLS[genesToPlot]
+geneOrder=numeric(length(these.symbols))
+for (i in 1:length(genes1)){
+print(i)
+geneOrder=geneOrder + (these.symbols %in% genes1[[i]])*(2^i)
+}
+geneOrder<-order(geneOrder)
+
+RowSideColors <- getSideColors(
+  sampInfo = genes,
+
+  sampleTracks = c("Moffitt.Normal.25",
+                   "Moffitt.Activated.25"
+                 
+                 ),
+  colorlists = list(c("white","blue"),
+                     c("white","brown")
+                   
+                    ) , drop.levels = FALSE)
+ColSideColors <- getSideColors(
+  sampInfo = samples,
+  sampleTracks = c( 
+                    "Moffitt.Normal.25",
+                    "Moffitt.Activated.25",
+                    "MS",
+                    "Tip_EC",
+                    "MT1X_EC",
+                    "Venous_EC",
+                    "Arterial_EC"
+              ),
+
+                   
+  colorlists = list( #c("red","yellow","green","blue","pink", "purple", "gray", "black", "brown"),
+                        c("white","blue"),
+                      c("white","brown"),
+                      c("blue","orange"),
+                       c("white","red"),
+                      c("white","brown"),
+                       c("white","purple"),
+                      c("white","blue")
+                   ))
+
+myPalette <- colorRampPalette(c("darkblue","blue", "white", "red","darkred"))(n = 299) 
+#===========================================================
+# do clustering and make semiautomatic calls
+
+#plot the heatmap
+km <- kmeans((scale(t(expression[genesToPlot,]))), 2)
+rowmydata<-as.matrix((newdf[genesToPlot,samplesToPlot]))
+rkm <- kmeans(t(scale(t(rowmydata))), 2)
+heatmap.3(as.matrix(expression[genesToPlot,]), 
+Rowv=TRUE,
+ distfun=function(x) {as.dist((1-cor(t(x)))/2)},
+Colv=as.dendrogram(stromasampletree),
+  dendrogram = "both",
+  trace="none",
+  margins =c(5,5),
+  labRow = genes[genesToPlot,"gene_short_name"],
+  labCol = samples$rna_match_id[samplesToPlot],
+  col=myPalette,breaks = seq(from = -3,to  = 3, length.out = length(myPalette)+1),
+  scale=c("row"),
+  cexRow = 0.8,
+  RowSideColors = t(RowSideColors$SideColors[genesToPlot,]),
+  RowSideColorsSize = dim(RowSideColors$SideColors)[2]*1.5,
+  ColSideColors = ColSideColors$SideColors[samplesToPlot,],
+  ColSideColorsSize = dim(ColSideColors$SideColors)[2]*1,
+  lwid = c(1,5),lhei = c(1,5))
+#===========================================================
+```
+
+# >> Lympho Heatmap
+```{r,fig.height=8}
+Lympho2<-subset(Lymphocytes,Condition%in%"Tumor")
+Lympho2$note<-"OK"
+x<-Lympho2$Patient%in%c("peng_T18","peng_T8","peng_T15")
+Lympho2$note[x]<-"Exclude"
+Lympho2<-subset(Lympho2,note%in%"OK")
+Lympho2<-subset(Lympho2,CellType2%in%c("CISH.CD8.T.RM","CTLA4.T.Reg","Effector.T.Cell","IL7R.CD8.T.Cell","CD8.T.RM","Naive.CD4.T.Cell","IL7R.NR4A1.T.Cell"))
+newdf<-Seurat::AggregateExpression(Lympho2,group.by = "Patient",slot = "counts",assays = "SCT")
+newdf<-newdf$SCT
+meta<-data.frame("Patient"=colnames(newdf))
+meta$MS<-"Normal"
+x<-meta$Patient%in%c("peng_T9", "peng_T11","PDAC1","PDAC2","peng_T23","peng_T17","peng_T21","peng_T18","peng_T8","peng_T15")#sig ratio
+meta$MS[x]<-"Activated"
+#===========================================================
+mRNA <- DESeqDataSetFromMatrix(countData =as.matrix(newdf),
+                              colData = meta,
+                              design= ~ MS)
+mRNA <- estimateSizeFactors( mRNA )
+mRNA$MS <- factor(mRNA$MS, levels = c("Activated","Normal"))
+mRNA$MS <- relevel(mRNA$MS, ref = "Normal")
+mRNA <- mRNA[ rowSums(counts(mRNA)) > 20, ]
+dds <- DESeq2::DESeq(mRNA)
+res <- results(dds)
+##Volcano
+x<-res$log2FoldChange
+df<-data.frame(rownames(res),x)
+#============================================
+resSig <- subset(res, padj < 0.2&abs(log2FoldChange)>0.8)
+resSig$SYMBOL<-rownames(resSig)
+resSig<-subset(resSig,SYMBOL%in%c(tf,secretome,ecm,contact))
+resSig<-data.frame(resSig@listData)
+y <- mutate(resSig, ordering = abs(log2FoldChange)) %>%
+        arrange(desc(ordering)) %>%top_n(30)
+ggplot(resSig, aes(log2FoldChange, forcats::fct_reorder(SYMBOL, log2FoldChange), fill = padj), showCategory=(n*2)) + 
+      geom_bar(stat='identity') + 
+      scale_fill_continuous(low='red', high='blue', guide=guide_colorbar(reverse=TRUE)) + 
+      theme_minimal() + ylab(NULL)
+#out<-intersect(resSig$SYMBOL,c(secretome,ecm,contact))
+out<-c("CCL14","VWF","AKNA","PODXL","ADGRE5","ASCL2","CX3CR1","CD34","TBX21","CD226","NOTCH4","CD8A","PPARG","SOX17","TEK","EPAS1","CCL4","KLRK1","NMUR1","SOX4","CXCL8","CXCL1","MITF","ITGB8","IL18","CXCL2","INHBA","THY1","AHR","EGR1","FOSB","ZNF462","ATF3","CCL20","AEBP1","NPW","TGFB2","ZNF618","LIF","RUNX1","HES1","KLF4")
+out<-c("CCL14","CX3CR1","AKNA","ADGRE5","TBX21","KLRK1","CD226","ASCL2","PODXL","CD34","CD8A","NOTCH4","EPAS1","PPARG","NMUR1","ERBB2","TEK","SOX17","SCTR","ZNF341","CCL21","CCL4","MEF2B","IL18","LRP1","LRP1","CXCL2","CXCL3","CXCL8","CXCL1","ZNF618","ITGA11","SNAI2","ZNF462","GDF15","TGFB2","IL20RB","EPHB3","CXCL6","GATA2","CXCL12","ZFHX","GLIS3","ZNF521","NRP2","FZD1","CCL20","C3","FOS","","EGR1","IL1RL1")
+#===============================================
+Lympho2<-subset(Lymphocytes,Condition%in%"Tumor")
+Lympho2<-subset(Lympho2,CellType2%in%c("Early.CD8","T.Reg","Cytotoxic.CD8.T","Naive.CD4.T.Cell","Dysfunctional.CD8","Progenitor.Lymph"))
+
+x<-Lympho2$Patient%in%c("peng_T6","peng_T4","peng_T3","peng_T24","peng_T2","peng_T13","peng_T14","peng_T22","peng_T16","peng_T8","peng_T15","peng_T18")
+Lympho2$note<-"OK"
+Lympho2$note[x]<-"Exclude"
+Lympho2<-subset(Lympho2,note%in%"OK")
+newdf<-pseudobulk(Lympho2)
+samples<-pseudobulk_score(newdf)
+genes<-samples[[2]]
+expression<-samples[[3]]
+samples<-samples[[1]]
+samples$MS<-"Normal"
+x<-samples$Patient%in%c("PDAC1","peng_T17","peng_T21","peng_T23","peng_T11","peng_T9","PDAC2")
+samples$MS[x]<-"Activated"
+samples$TCellPercent<-as.numeric(table(Lympho2$Patient)/table(PDACTrainingMeta$Patient)[c(1,2,3,4,5,6,11,13,15,16,18,22,24,26)])*100
+x<-table(Lympho2$CellType2,Lympho2$Patient)
+y<-as.vector(table(Lympho2$Patient))
+prop<-round(t(x)/y,4)*100
+
+samples$EarlyCD8<-prop[,3]
+samples$DysfunctCD8<-prop[,4]
+samples$Progen<-prop[,5]
+samples$CytotoxicCD8<-prop[,6]
+samples$TReg<-prop[,7]
+samples$NaiveCD4<-prop[,9]
+#===========================================================
+genes1<-out
+genesToPlot<-which(rownames(newdf) %in% unlist(genes1))
+these.symbols<-genes$SYMBOLS[genesToPlot]
+geneOrder=numeric(length(these.symbols))
+for (i in 1:length(genes1)){
+print(i)
+geneOrder=geneOrder + (these.symbols %in% genes1[[i]])*(2^i)
+}
+geneOrder<-order(geneOrder)
+
+RowSideColors <- getSideColors(
+  sampInfo = genes,
+
+  sampleTracks = c("secretome",
+                   "contact",
+                   "ecm"
+                 
+                 ),
+  colorlists = list(c("white","blue"),
+                     c("white","brown"),
+                    c("white","brown")
+                   
+                    ) , drop.levels = FALSE)
+ColSideColors <- getSideColors(
+  sampInfo = samples,
+  sampleTracks = c( "TCellPercent",
+                    "Puram_CD8.Tcell",
+                    "Chen_EffectorT",
+                    "MS",
+                    "Chen_ExhaustT",
+                    "Puram_CD4.Tcell",
+                    "EarlyCD8",
+                    "DysfunctCD8",
+                    "NaiveCD4",
+                    "TReg",
+                    "CytotoxicCD8",
+                    "Progen"
+              ),
+
+  colorlists = list( #c("red","yellow","green","blue","pink", "purple", "gray", "black", "brown"),
+                        c("white","blue"),
+                        c("white","green"),
+                      c("white","brown"),
+                      c("blue","orange"),
+                       c("white","red"),
+                           c("white","brown"),
+                      c("white","red"),
+                       c("white","black"),
+                         c("white","red"),
+                       c("white","blue"),
+                         c("white","red"),
+                       c("white","purple"),
+                      c("white","brown")
+                   ))
+myPalette <- colorRampPalette(c("darkblue","blue", "white", "red","darkred"))(n = 299) 
+#===========================================================
+#plot the heatmap
+km <- kmeans((scale(t(expression[genesToPlot,]))), 2)
+rowmydata<-as.matrix((newdf[genesToPlot,samplesToPlot]))
+rkm <- kmeans(t(scale(t(rowmydata))), 2)
+heatmap.3(as.matrix(expression[genesToPlot,]), 
+Rowv=TRUE,
+ distfun=function(x) {as.dist((1-cor(t(x)))/2)},
+Colv=as.dendrogram(stromasampletree),
+  dendrogram = "both",
+  trace="none",
+  margins =c(5,5),
+  labRow = genes[genesToPlot,"gene_short_name"],
+  labCol = samples$rna_match_id[samplesToPlot],
+  col=myPalette,breaks = seq(from = -3,to  = 3, length.out = length(myPalette)+1),
+  scale=c("row"),
+  cexRow = 0.8,
+  RowSideColors = t(RowSideColors$SideColors[genesToPlot,]),
+  RowSideColorsSize = dim(RowSideColors$SideColors)[2]*1.5,
+  ColSideColors = ColSideColors$SideColors[samplesToPlot,],
+  ColSideColorsSize = dim(ColSideColors$SideColors)[2]*1,
+  lwid = c(1,5),lhei = c(1,5))
+#===========================================================
+```
+#=============================================================
+
+# Epithelium MT - Basal/Classical Signaling 
+```{r}
+Tumor <- readRDS("/premDisk/khoh/Github/scTME/data/subset/Epi_Subset2021.rds")
+neo<-subset(Tumor,seurat_clusters%in%c(1))
+#Subset out Metaplasia, 
+neo2<-subset(neo,MT%in%c("Basal","Classical"))
+newdf<-Seurat::AggregateExpression(neo2,group.by = "Patient",slot = "counts",assays = "SCT")
+newdf<-newdf$SCT
+meta<-data.frame("Patient"=colnames(newdf))
+meta$MT<-"Classical"
+x<-meta$Patient%in%c("peng_T12", "peng_T11", "peng_T16","peng_T19", "peng_T21", "peng_T23", "peng_T8", "peng_T9","peng_T7", "PDAC1")
+meta$MT[x]<-"Basal"
+table(meta$MT)
+#===========================================================
+mRNA <- DESeqDataSetFromMatrix(countData =as.matrix(newdf),
+                              colData = meta,
+                              design= ~ MT)
+mRNA <- estimateSizeFactors( mRNA )
+mRNA$MT <- factor(mRNA$MT, levels = c("Classical","Basal"))
+mRNA$MT <- relevel(mRNA$MT, ref = "Basal")
+mRNA <- mRNA[ rowSums(counts(mRNA)) > 20, ]
+dds <- DESeq2::DESeq(mRNA)
+res <- results(dds)
+##Volcano
+x<-res$log2FoldChange
+df<-data.frame(rownames(res),x)
+#============================================
+resSig <- subset(res, padj < 0.1&abs(log2FoldChange)>0.8)
+resSig$SYMBOL<-rownames(resSig)
+resSig<-subset(resSig,SYMBOL%in%c(tf,secretome,ecm,contact))
+resSig<-data.frame(resSig@listData)
+y <- mutate(resSig, ordering = abs(log2FoldChange)) %>%
+        arrange(desc(ordering)) %>%top_n(30)
+ggplot(y, aes(log2FoldChange, forcats::fct_reorder(SYMBOL, log2FoldChange), fill = padj), showCategory=(n*2)) + 
+      geom_bar(stat='identity') + 
+      scale_fill_continuous(low='red', high='blue', guide=guide_colorbar(reverse=TRUE)) + 
+      theme_minimal() + ylab(NULL)
+VlnPlot(neo,features = c("APOA1","TFF3","IL1A","KRT81"),group.by = "MT")
+
+out<-intersect(resSig$SYMBOL,c(gene_lists$secretome,gene_lists$contact))
+VlnPlot(neo,features = c("IL1A","TFF3"),group.by = "MT")
+
+```
+
+#>> Epithelium Pseudobulk + Calculate Gene Signatures
+```{r}
+source('/premDisk/khoh/Github/scTME/R/pseudobulk_score.R', echo=TRUE)
+source('/premDisk/khoh/Github/scTME/R/pseudobulk.R', echo=TRUE)
+newdf<-pseudobulk(neo2)
+output<-pseudobulk_score(newdf)
+samples<-output[[1]]
+genes<-output[[2]]
+expression<-output[[3]]
+samplesToPlot <- which((!samples$note %in% "OK"))
+
+samples$MT<-"Classical"
+x<-samples$Patient%in%c("peng_T12","peng_T11","peng_T16","peng_T19","PDAC1","peng_T21","peng_T23","peng_T8","peng_T9","peng_T7")
+samples$MT[x]<-"Basal"
+x<-samples$Patient%in%c("peng_T5","PDAC2","peng_T13","peng_T22","peng_T15")
+samples$MT[x]<-"Mixed"
+table(samples$MT)
+
+
+samples$MS<-"Normal"
+x<-samples$Patient%in%c("peng_T6","peng_T4","peng_T3","peng_T24","peng_T2","peng_T13","peng_T14","peng_T22","peng_T16","peng_T8","peng_T15","peng_T18")
+samples$MS[x]<-"Intermediate"
+x<-samples$Patient%in%c("PDAC1","peng_T17","peng_T21","peng_T23","peng_T11","peng_T9","PDAC2")
+samples$MS[x]<-"Activated"
+```
+
+#>> Tumor Heatmap
+```{r, fig.width=8, fig.height=10, message=FALSE, warning=FALSE, echo=FALSE}
+#===========================================================
+resSig <- subset(res, padj < 0.1&abs(log2FoldChange)>0.25)
+resSig$SYMBOL<-rownames(resSig)
+resSig<-subset(resSig,SYMBOL%in%c(gene_lists$secretome))
+#resSig<-subset(resSig,SYMBOL%in%c(gene_lists$ecm,gene_lists$contact))
+#resSig<-subset(resSig,SYMBOL%in%c(gene_lists$contact))
+
+resSig<-data.frame(resSig@listData)
+y <- mutate(resSig, ordering = abs(log2FoldChange)) %>%
+        arrange(desc(ordering)) %>%top_n(60)
+genes1<-y$SYMBOL
+genesToPlot<-which(rownames(expression) %in% unlist(genes1))
+these.symbols<-genes$SYMBOLS[genesToPlot]
+geneOrder=numeric(length(these.symbols))
+for (i in 1:length(genes1)){
+print(i)
+geneOrder=geneOrder + (these.symbols %in% genes1[[i]])*(2^i)
+}
+geneOrder<-order(geneOrder)
+
+RowSideColors <- getSideColors(
+  sampInfo = genes,
+
+  sampleTracks = c("Moffitt.F6_BasalLike.top25",
+                   "ecm",
+                   "secretome",
+                   "contact"
+                 
+                 ),
+  colorlists = list(c("white","orange"),
+                     c("white","blue"),
+                     c("white","blue"),
+                    c("white","green")
+                   
+                    ) , drop.levels = FALSE)
+ColSideColors <- getSideColors(
+  sampInfo = samples,
+  sampleTracks = c( #"names.full.split.",
+                    "Moffitt.F6_BasalLike.top25",
+                    "Moffitt.F8_Classical.top25",
+                    "MS",
+                    "MT"
+              ),
+
+                   
+  colorlists = list( #c("red","yellow","green","blue","pink", "purple", "gray", "black", "brown"),
+                        c("white","orange"),
+                      c("white","blue"),
+                      c("brown","lightblue","purple"),
+                      c("orange","blue")
+                   ))
+
+#===========================================================
+# color scheme for heat map
+myPalette <- colorRampPalette(c("darkblue","blue", "white", "red","darkred"))(n = 299) 
+#===========================================================
+#samplesToPlot <- which((!samples$note %in% "OK"))
+# do clustering and make semiautomatic calls
+sampletree <- ConsensusClusterPlus::ConsensusClusterPlus(d = t(scale(scale=FALSE,center=TRUE,
+                                                                     x = t(as.matrix(expression[genesToPlot,samplesToPlot])))),
+                                                         seed = 1234,
+                                                         pFeature = 0.9,
+                                                         pItem = 0.9,
+                                                         maxK = 3,
+                                                         reps=500,
+                                                         distance="spearman",
+                                                         clusterAlg="hc")[[2]]$consensusTree
+#plot the heatmap
+
+heatmap.3(as.matrix(expression[genesToPlot,samplesToPlot]), 
+Rowv=TRUE,#
+ distfun=function(x) {as.dist((1-cor(t(x)))/2)},
+#Colv=TRUE,
+Colv=as.dendrogram(sampletree),
+  dendrogram = "both",
+  trace="none",
+  margins =c(5,5),
+  labRow = genes[genesToPlot,"gene_short_name"],
+  labCol = samples$rna_match_id[samplesToPlot],
+  col=myPalette,breaks = seq(from = -3,to  = 3, length.out = length(myPalette)+1),
+  scale=c("row"),
+  cexRow = 0.8,
+  RowSideColors = t(RowSideColors$SideColors[genesToPlot,]),
+  RowSideColorsSize = dim(RowSideColors$SideColors)[2]*1.5,
+  ColSideColors = ColSideColors$SideColors[samplesToPlot,],
+  ColSideColorsSize = dim(ColSideColors$SideColors)[2]*1,
+  lwid = c(1,5),lhei = c(1,5))
+
+neosampletree<-sampletree
+#===========================================================
+```
+
+
+#>> Stroma - MT - Split by Tumor Subtype
+```{r,fig.height=8}
+Stroma2<-subset(Stroma,Condition%in%"Tumor")
+Stroma2<-subset(Stroma2,CellType2%in%c("qPSC","smPSC","iCAF","Schwann","myCAF","csCAF"))
+Stroma2$note<-"OK"
+Stroma2$MT<-"Classical"
+x<-Stroma2$Patient%in%c("peng_T12","peng_T11","peng_T16","peng_T19","PDAC1","peng_T21","peng_T23","peng_T8","peng_T9","peng_T7")
+Stroma2$MT[x]<-"Basal"
+x<-Stroma2$Patient%in%c("peng_T5","PDAC2","peng_T13","peng_T22","peng_T15")
+Stroma2$MT[x]<-"Mixed"
+table(Stroma2$MT)
+subset<-c("peng_T17","peng_T6","peng_T4","peng_T3","peng_T24","peng_T20","peng_T2","peng_T18","peng_T14","peng_T1","peng_T10","peng_T15","peng_T22","peng_T13","PDAC2","peng_T5","peng_T7","peng_T9","peng_T8","peng_T23","peng_T21","PDAC1","peng_T19","peng_T16","peng_T11")
+Stroma2<-subset(Stroma2,Patient%in%subset)
+#================================================
+newdf<-Seurat::AggregateExpression(subset(Stroma2,MT%in%c("Classical","Basal")),group.by = "Patient",slot = "counts",assays = "SCT")
+#newdf<-newdf$SCT[!rowSums(newdf$SCT)<10,]
+newdf<-newdf$SCT
+meta<-data.frame("Patient"=colnames(newdf))
+meta$MT<-"Classical"
+x<-meta$Patient%in%c("peng_T12","peng_T11","peng_T16","peng_T19","PDAC1","peng_T21","peng_T23","peng_T8","peng_T9","peng_T7")
+meta$MT[x]<-"Basal"
+x<-meta$Patient%in%c("peng_T5","PDAC2","peng_T13","peng_T22","peng_T15")
+meta$MT[x]<-"Mixed"
+table(meta$MT)
+#===========================================================
+mRNA <- DESeqDataSetFromMatrix(countData =as.matrix(newdf),
+                              colData = meta,
+                              design= ~ MT)
+mRNA <- estimateSizeFactors( mRNA )
+mRNA$MS <- factor(mRNA$MT, levels = c("Classical","Basal"))
+mRNA$MS <- relevel(mRNA$MT, ref = "Basal")
+mRNA <- mRNA[ rowSums(counts(mRNA)) > 30, ]
+dds <- DESeq2::DESeq(mRNA)
+res <- results(dds)
+##Volcano
+x<-res$log2FoldChange
+df<-data.frame(rownames(res),x)
+#============================================
+resSig <- subset(res, padj < 0.1&abs(log2FoldChange)>0.5)
+resSig$SYMBOL<-rownames(resSig)
+resSig<-subset(resSig,SYMBOL%in%c(tf,secretome,ecm,contact))
+resSig<-data.frame(resSig@listData)
+y <- mutate(resSig, ordering = abs(log2FoldChange)) %>%
+        arrange(desc(ordering)) %>%top_n(40)
+ggplot(resSig, aes(log2FoldChange, forcats::fct_reorder(SYMBOL, log2FoldChange), fill = padj), showCategory=(n*2)) + 
+      geom_bar(stat='identity') + 
+      scale_fill_continuous(low='red', high='blue', guide=guide_colorbar(reverse=TRUE)) + 
+      theme_minimal() + ylab(NULL)
+out<-intersect(resSig$SYMBOL,c(gene_lists$secretome,gene_lists$ecm,gene_lists$contact))
+
+#============================================================
+#=========================================================== Heatmap
+Stroma2<-subset(Stroma,Condition%in%"Tumor")
+Stroma2<-subset(Stroma2,CellType2%in%c("qPSC","smPSC","iCAF","Schwann","myCAF","csCAF"))
+
+Stroma2$note<-"OK"
+Stroma2$MT<-"Classical"
+x<-Stroma2$Patient%in%c("peng_T12","peng_T11","peng_T16","peng_T19","PDAC1","peng_T21","peng_T23","peng_T8","peng_T9","peng_T7")
+Stroma2$MT[x]<-"Basal"
+x<-Stroma2$Patient%in%c("peng_T5","PDAC2","peng_T13","peng_T22","peng_T15")
+Stroma2$MT[x]<-"Mixed"
+table(Stroma2$MT)
+Stroma2<-subset(Stroma2,MT%in%c("Basal","Classical"))
+Stroma2$note<-"OK"
+x<-Stroma2$Patient%in%c("peng_T12")
+Stroma2$note[x]<-"Exclude"
+Stroma2<-subset(Stroma2,note%in%"OK")
+newdf<-pseudobulk(Stroma2)
+samples<-pseudobulk_score(newdf)
+genes<-samples[[2]]
+expression<-samples[[3]]
+samples<-samples[[1]]
+samples$MT<-"Classical"
+x<-samples$Patient%in%c("peng_T12","peng_T11","peng_T16","peng_T19","PDAC1","peng_T21","peng_T23","peng_T8","peng_T9","peng_T7")
+samples$MT[x]<-"Basal"
+x<-samples$Patient%in%c("peng_T5","PDAC2","peng_T13","peng_T22","peng_T15")
+samples$MT[x]<-"Mixed"
+table(samples$MT)
+samples$StromaPercent<-as.numeric(table(Stroma2$Patient)/table(PDACTrainingMeta$Patient)[-c(2,6,7,9,17,22)])*100
+x<-table(Stroma2$CellType2,Stroma2$Patient)
+y<-as.vector(table(Stroma2$Patient))
+prop<-round(t(x)/y,4)*100
+
+samples$qPSC.p<-prop[,3]
+samples$smPSC.p<-prop[,4]
+samples$iCAF.p<-prop[,5]
+samples$myCAF.p<-prop[,7]
+samples$csCAF.p<-prop[,8]
+
+#===========================================================
+genes1<-out
+genes1<-c(y$SYMBOL,out)
+genesToPlot<-which(rownames(newdf) %in% unlist(genes1))
+these.symbols<-genes$SYMBOLS[genesToPlot]
+geneOrder=numeric(length(these.symbols))
+for (i in 1:length(genes1)){
+print(i)
+geneOrder=geneOrder + (these.symbols %in% genes1[[i]])*(2^i)
+}
+geneOrder<-order(geneOrder)
+#=============================================================
+samplesToPlot <- which((!samples$note %in% "OK"))
+clustergenes <- c(which(genes$SYMBOL %in% genes1))
+# do clustering and make semiautomatic calls
+sampletree <- ConsensusClusterPlus::ConsensusClusterPlus(d = t(scale(scale=FALSE,center=TRUE,
+                                                                     x = t(as.matrix(expression[clustergenes,samplesToPlot])))),
+                                                         seed = 1234,
+                                                         pFeature = 0.8,
+                                                         pItem = 0.8,
+                                                         maxK = 3,
+                                                         reps=800,
+                                                         distance="pearson",clusterAlg="hc"
+                                                         )[[2]]$consensusTree  # 
+#===========================================================
+RowSideColors <- getSideColors(
+  sampInfo = genes,
+  sampleTracks = c("secretome",
+                   "contact",
+                   "ecm",
+                   "Moffitt.F5_ActivatedStroma.top250",
+                   "Moffitt.F13_NormalStroma.top250"
+                 ),
+  colorlists = list(c("white","blue"),
+                     c("white","brown"),
+                    c("white","brown"),
+                    c("white","lightblue"),
+                     c("white","brown")
+                    ) , drop.levels = FALSE)
+
+ColSideColors <- getSideColors(
+  sampInfo = samples,
+  sampleTracks = c( #"names.full.split.",
+                    "Moffitt.F13_NormalStroma.top25",
+                    "Moffitt.F5_ActivatedStroma.top25",
+                    "MT",
+                    "StromaPercent",
+                    "myCAF.p",
+                    "iCAF.p",
+                    "csCAF.p",
+                    "qPSC.p",
+                    "smPSC.p"
+              ),
+
+  colorlists = list( #c("red","yellow","green","blue","pink", "purple", "gray", "black", "brown"),
+                        c("white","blue"),
+                      c("white","brown"),
+                      c("orange","blue","green"),
+                       c("grey","darkblue"),
+                      c("white","brown"),
+                          c("white","brown"),
+                       c("white","brown"),
+                       c("white","brown"),
+                      c("white","blue")
+                   ))
+
+myPalette <- colorRampPalette(c("darkblue","blue", "white", "red","darkred"))(n = 100) 
+
+#plot the heatmap
+rowmydata<-as.matrix((newdf[genesToPlot,samplesToPlot]))
+heatmap.3(as.matrix(expression[genesToPlot,]), 
+Rowv=TRUE,
+ distfun=function(x) {as.dist((1-cor(t(x)))/2)},
+Colv=as.dendrogram(neosampletree),
+  dendrogram = "both",
+  trace="none",
+  margins =c(5,5),
+  labRow = genes[genesToPlot,"gene_short_name"],
+  labCol = samples$rna_match_id[samplesToPlot],
+  col=myPalette,breaks = seq(from = -3,to  = 3, length.out = length(myPalette)+1),
+  scale=c("row"),
+  cexRow = 0.8,
+  RowSideColors = t(RowSideColors$SideColors[genesToPlot,]),
+  RowSideColorsSize = dim(RowSideColors$SideColors)[2]*1.5,
+  ColSideColors = ColSideColors$SideColors[samplesToPlot,],
+  ColSideColorsSize = dim(ColSideColors$SideColors)[2]*1,
+  lwid = c(1,5),lhei = c(1,5))
+
+stromasampletree<-sampletree
+sampletreetrim<-sampletree
+#===========================================================
+```
+#=============================================================
+
+## Load Test Set to validate discovery set findings
+```{r}
+PDACTestSet <- readRDS("/premiumDisk/khoh/Github/scTME/data/PDACTestSet.rds")
+table(PDACTestSet$CellType1)
+table(PDACTestSet$Dataset)
+PDACTestSet<-subset(PDACTestSet,Condition%in%"Tumor"&Site%in%"Primary")
+TestStroma<-subset(PDACTestSet,Site%in%"Primary"&CellType1%in%"Stroma"&Condition%in%"Tumor")
+
+# Add DE Signaling 
+gene_lists$ActivatedStromaSig<-c("TGFBR1","VEGFC","IL20RA","TNFSF4","TNFSF10","PLXNC1","BMP4","OXT","IGFR1","IL1R1","TSLP","PDCD1LG2","ANXA1","PTHLH","PDGFC","FGFR1","PDGFD","FGFR2","FZD1","NRP2","THBS2","COL1A1","POSTN","FN1","BMP4","INHBA","WNT5A","CDH11","CLEC2B","CD99","SDC1","PTHLH","ANXA1")
+gene_lists$NormalStromaSig<-c("PGF","CCL21","NTRK2","EDNRB","CSF1","PDGFB","TNFRSB1B","ANGPT1","CCL14","IL3RA","LRRC4B","MCAM","CD36","ICAM2","ITGA7","LAMA3","NOTCH3","FZD4","PTH1R","PODXL","CSPG4","WNT6","LRRC4B","JAG1","NOTCH1","CD4")
+gene_lists$ActivatedMyeloidSig<-c("CCL3","CCL4","CCL13","CCL18","CCL20","CCL22","CXCL1","CXCL2","CXCL3","CXCL8","SPP1","SAA1","TNF","XBP1","IL10","IL1A","IL1RL2","CD209","NR4A2","SOX4","CD99","XBP1","KLF4","COL6A3")
+gene_lists$NormalMyeloidSig<-c("SELL","SELP","BCL6B","CXCL13","CCL14","LIFR","IL33")
+gene_lists$NormalLymphSig<-c()
+gene_lists$ActivatedLymphSig<-c("FOS","CXCL1","CXCL8","ZNF462","LRP1","IL18","CCL20")
+```
+
+
+# Test Stroma Heatmap
+```{r,fig.height=8}
+TestStroma$note<-"OK" #Filter low quality datasets and metastasis samples
+#x<-TestStroma$Patient%in%c("P01","P02","P03","P04","P05","PDAC_A","PDAC_B","PDAC_C")
+x<-TestStroma$Patient%in%c("P01","P02","P03","P04","P07","PDAC_A","PDAC_B","PDAC_C")
+table(TestStroma$Patient)
+TestStroma$note[x]<-"Exclude"
+TestStroma<-subset(TestStroma,note%in%"OK")
+#================================================
+out<-c("ITGA7","PGF","LAMA3","NFASC","CSF1","PDGFA","EDNRB","TNFRSF1B","ANGPT1","CD36","NOTCH3","THBS4","CSPG4","NOTCH1","WNT6","NPY1R","PDGFB","PODXL","CD4","SEMA4C","MCAM","IL3RA","CCL14","VIPR1","CCL21","LRRC4B","MPZ","NTRK2","FZD4","JAG1","F2RL3","PTH1R","ICAM2","CDH11","COL1A1","INHBA","THBS2","POSTN","PTHLH","ITGA11","FN1","OXT","WNT5A","SDC1","PDGFC","FZD1","NRP2","CD99","COMP","COL6A3","PLXNC1","TNFSF4","VEGFC","FGFR2","PDGFD","FGFR1","ANXA1","TNFSF10","IGF1R","IL20RA","TNFSF11","PDCD1LG2","IL1R1","CLEC2B","TSLP","BMP4","TGFBR1")
+#out<-c("EPAS1","TBX2","KLF9","HEYL","EBF1","SOX13","FOXF1","PPARG","L3MBTL4","BCL6","ZNF219","CASZ1","PRDM16","IRX2","MLXIPL","TCF15","KLF6","WT1","ZNF469","ZBED1","MITF","LEF1","CREB3L1","BHLHE41","ZNF521") #Transcription Factor
+#============================================================
+newdf<-pseudobulk(TestStroma)
+samples<-pseudobulk_score(newdf)
+genes<-samples[[2]]
+expression<-samples[[3]]
+samples<-samples[[1]]
+samples$MS<-"Normal"
+x<-samples$Patient%in%c("P06","P08")
+samples$MS[x]<-"Activated"
+#samples$StromaPercent<-as.numeric(table(Stroma2$Patient)/table(PDACTestSet$Patient)[c(1,2,3,4,5,6,11,13,15,16,18,22,24,26)])*100
+#samples$StromaPercent<-as.numeric(table(TestStroma$Patient)/table(PDACTestSet$Patient)[c(44,45,46,47,48)])*100
+samples$StromaPercent<-as.numeric(table(TestStroma$Patient)/table(PDACTestSet$Patient)[-c(1,2,3,4,7,11,12,13)])*100
+
+x<-table(TestStroma$CellType2,TestStroma$Patient)
+y<-as.vector(table(TestStroma$Patient))
+prop<-round(t(x)/y,4)*100
+
+samples$qPSC.p<-prop[,4]
+samples$smPSC.p<-prop[,5]
+samples$iCAF.p<-prop[,2]
+samples$myCAF.p<-prop[,3]
+samples$csCAF.p<-prop[,1]
+
+#===========================================================
+genes1<-intersect(c(gene_lists$Moffitt.F13_NormalStroma.top100,gene_lists$Moffitt.F5_ActivatedStroma.top100),rownames(expression)[rowSums(expression)>0.25])
+genesToPlot<-which(rownames(newdf) %in% unlist(genes1))
+these.symbols<-genes$SYMBOLS[genesToPlot]
+geneOrder=numeric(length(these.symbols))
+for (i in 1:length(genes1)){
+print(i)
+geneOrder=geneOrder + (these.symbols %in% genes1[[i]])*(2^i)
+}
+geneOrder<-order(geneOrder)
+#=============================================================
+samplesToPlot <- which((!samples$note %in% "OK"))
+clustergenes <- c(which(genes$SYMBOL %in% gene_lists$Moffitt.F13_NormalStroma.top25),
+                 which(genes$SYMBOL %in% gene_lists$Moffitt.F5_ActivatedStroma.top25))
+clustergenes<-clustergenes
+# do clustering and make semiautomatic calls
+sampletree <- ConsensusClusterPlus::ConsensusClusterPlus(d = t(scale(scale=FALSE,center=TRUE,
+                                                                     x = t(as.matrix(expression[clustergenes,samplesToPlot])))),
+                                                         seed = 1234,
+                                                         pFeature = 0.8,
+                                                         pItem = 0.8,
+                                                         maxK = 3,
+                                                         reps=1000,
+                                                         distance="euclidean",clusterAlg="km"
+                                                         )[[2]]$consensusTree  # 
+tmp.cluster <- c("Activated","Normal","Intermediate")[cutree(tree = sampletree, k = 2)]
+samples$MS <- factor("NA",levels = c("Activated","Normal","Intermediate"))
+samples$MS <- tmp.cluster
+#===========================================================
+RowSideColors <- getSideColors(
+  sampInfo = genes,
+
+  sampleTracks = c("secretome",
+                   "Moffitt.F13_NormalStroma.top250",
+                   "Moffitt.F5_ActivatedStroma.top250"
+                 
+                 ),
+  colorlists = list(c("white","blue"),
+                     c("white","brown"),
+                     c("white","brown")
+                   
+                    ) , drop.levels = FALSE)
+
+ColSideColors <- getSideColors(
+  sampInfo = samples,
+  sampleTracks = c( #"names.full.split.",
+                    "Moffitt.F13_NormalStroma.top100",
+                    "Moffitt.F5_ActivatedStroma.top100",
+                    "MS",
+                    "StromaPercent",
+                     "myCAF.p",
+                    "iCAF.p",
+                    "NormalStromaSig",
+                    "ActivatedStromaSig",
+                    "smPSC.p"
+
+              ),
+
+                   
+  colorlists = list( #c("red","yellow","green","blue","pink", "purple", "gray", "black", "brown"),
+                        c("white","blue"),
+                      c("white","brown"),
+                      c("lightblue","purple","brown"),
+                                             c("grey","darkblue"),
+                      c("white","brown"),
+                          c("white","brown"),
+                       c("white","brown"),
+                       c("white","brown"),
+                       c("grey","darkblue")
+
+
+                   ))
+
+myPalette <- colorRampPalette(c("darkblue","blue", "white", "red","darkred"))(n = 100) 
+#plot the heatmap
+rowmydata<-as.matrix((newdf[genesToPlot,samplesToPlot]))
+heatmap.3(as.matrix(expression[genesToPlot,]), 
+Rowv=convert_order_to_dendrogram(geneOrder),
+ distfun=function(x) {as.dist((1-cor(t(x)))/2)},
+#  Col =TRUE,
+Colv=as.dendrogram(sampletree),
+  dendrogram = "both",
+  trace="none",
+  margins =c(10,3),
+  labRow = genes[genesToPlot,"gene_short_name"],
+  labCol = samples$rna_match_id[samplesToPlot],
+  col=myPalette,breaks = seq(from = -3,to  = 3, length.out = length(myPalette)+1),
+  scale=c("row"),
+  cexRow = 0.8,
+  RowSideColors = t(RowSideColors$SideColors[genesToPlot,]),
+  RowSideColorsSize = dim(RowSideColors$SideColors)[2]*1.5,
+  ColSideColors = ColSideColors$SideColors[samplesToPlot,],
+  ColSideColorsSize = dim(ColSideColors$SideColors)[2]*1,
+  lwid = c(1,5),lhei = c(1,5))
+
+stromasampletree<-sampletree
+sampletreetrim<-sampletree
+#===========================================================
+```
+# TestStroma Plots
+```{r}
+p1<-ggplot(samples, aes(x=MS,y=NormalStromaSig,label=Patient))+geom_boxplot(aes(color = MS), size = 0.5,alpha=0.5)+geom_point(position = "jitter")+RotatedAxis()+NoLegend()
+p2<-ggplot(samples, aes(x=MS,y=ActivatedStromaSig,label=Patient))+geom_boxplot(aes(color = MS), size = 0.5,alpha=0.5)+geom_point(position = "jitter")+RotatedAxis()+NoLegend()
+cowplot::plot_grid(p1,p2)
+
+teststromasub<-samples$MS
+```
+# TestMyeloid
+```{r,fig.height=8}
+TestMyeloid<-subset(PDACTestSet,Site%in%"Primary"&CellType1%in%"Myeloid"&Condition%in%"Tumor")
+table(TestMyeloid$Patient)
+TestMyeloid$note<-"OK"
+x<-TestMyeloid$Patient%in%c("P01","P02","P03","P07","PDAC_A","PDAC_B","PDAC_C")
+TestMyeloid$note[x]<-"Exclude"
+TestMyeloid<-subset(TestMyeloid,note%in%"OK")
+#================================================
+
+newdf<-pseudobulk(TestMyeloid)
+samples<-pseudobulk_score(newdf)
+genes<-samples[[2]]
+expression<-samples[[3]]
+samples<-samples[[1]]
+#samples$Ratio<-df$sort.ratio.
+samples$MS<-teststromasub#[-1]
+samples$StromaPercent<-as.numeric(table(TestMyeloid$Patient)/table(PDACTestSet$Patient)[-c(1,2,3,11,12,13)])*100
+
+x<-table(TestMyeloid$CellType2,TestMyeloid$Patient)
+y<-as.vector(table(TestStroma$Patient))
+prop<-round(t(x)/y,4)*100
+
+samples$qPSC.p<-prop[,4]
+samples$smPSC.p<-prop[,5]
+samples$iCAF.p<-prop[,2]
+samples$myCAF.p<-prop[,3]
+samples$csCAF.p<-prop[,1]
+
+#===========================================================
+genes1<-intersect(c(gene_lists$ActivatedMyeloidSig,gene_lists$NormalMyeloidSig),rownames(expression)[rowSums(expression)>0.5])
+genesToPlot<-which(rownames(newdf) %in% unlist(genes1))
+these.symbols<-genes$SYMBOLS[genesToPlot]
+geneOrder=numeric(length(these.symbols))
+for (i in 1:length(genes1)){
+print(i)
+geneOrder=geneOrder + (these.symbols %in% genes1[[i]])*(2^i)
+}
+geneOrder<-order(geneOrder)
+#=============================================================
+samplesToPlot <- which((!samples$note %in% "OK"))
+clustergenes <- c(which(genes$SYMBOL %in% gene_lists$Moffitt.F13_NormalStroma.top100),
+                 which(genes$SYMBOL %in% gene_lists$Moffitt.F5_ActivatedStroma.top250))
+clustergenes<-genes1
+# do clustering and make semiautomatic calls
+sampletree <- ConsensusClusterPlus::ConsensusClusterPlus(d = t(scale(scale=FALSE,center=TRUE,
+                                                                     x = t(as.matrix(expression[clustergenes,samplesToPlot])))),
+                                                         seed = 1234,
+                                                         pFeature = 0.8,
+                                                         pItem = 0.8,
+                                                         maxK = 3,
+                                                         reps=800,
+                                                         distance="pearson",clusterAlg="hc"
+                                                         )[[2]]$consensusTree  # 
+tmp.cluster <- c("Normal","Activated","Intermediate")[cutree(tree = sampletree, k = 2)]
+#===========================================================
+RowSideColors <- getSideColors(
+  sampInfo = genes,
+
+  sampleTracks = c("secretome",
+                   "Moffitt.F13_NormalStroma.top250",
+                   "Moffitt.F5_ActivatedStroma.top250"
+                 ),
+  colorlists = list(c("white","blue"),
+                     c("white","brown"),
+                     c("white","brown")
+                   
+                    ) , drop.levels = FALSE)
+
+ColSideColors <- getSideColors(
+  sampInfo = samples,
+  sampleTracks = c( #"names.full.split.",
+                    "Moffitt.F13_NormalStroma.top100",
+                    "Moffitt.F5_ActivatedStroma.top100",
+                    "MS",
+                    "StromaPercent",
+                     "myCAF.p",
+                    "iCAF.p",
+                    "NormalStromaSig",
+                    "ActivatedStromaSig",
+                    "smPSC.p"
+              ),
+
+                   
+  colorlists = list( #c("red","yellow","green","blue","pink", "purple", "gray", "black", "brown"),
+                        c("white","blue"),
+                      c("white","brown"),
+                      c("lightblue","purple","brown"),
+                                             c("grey","darkblue"),
+                      c("white","brown"),
+                          c("white","brown"),
+                       c("white","brown"),
+                       c("white","brown"),
+                       c("grey","darkblue")
+                   ))
+
+myPalette <- colorRampPalette(c("darkblue","blue", "white", "red","darkred"))(n = 100) 
+
+#plot the heatmap
+rowmydata<-as.matrix((newdf[genesToPlot,samplesToPlot]))
+heatmap.3(as.matrix(expression[genesToPlot,]), 
+Rowv=TRUE,
+ distfun=function(x) {as.dist((1-cor(t(x)))/2)},
+Colv=as.dendrogram(stromasampletree),
+  dendrogram = "both",
+  trace="none",
+  margins =c(10,3),
+  labRow = genes[genesToPlot,"gene_short_name"],
+  labCol = samples$rna_match_id[samplesToPlot],
+  col=myPalette,breaks = seq(from = -3,to  = 3, length.out = length(myPalette)+1),
+  scale=c("row"),
+  cexRow = 0.8,
+  RowSideColors = t(RowSideColors$SideColors[genesToPlot,]),
+  RowSideColorsSize = dim(RowSideColors$SideColors)[2]*1.5,
+  ColSideColors = ColSideColors$SideColors[samplesToPlot,],
+  ColSideColorsSize = dim(ColSideColors$SideColors)[2]*1,
+  lwid = c(1,5),lhei = c(1,5))
+#===========================================================
+```
+
+# TestMyeloid Plots
+```{r}
+p3<-ggplot(samples, aes(y=ActivatedMyeloidSig, x=MS,label=Patient))+geom_text_repel()+ geom_boxplot(aes(color = MS), size = 0.5,alpha=0.5)+geom_point(position="jitter")+NoLegend()
+p4<-ggplot(samples, aes(y=NormalMyeloidSig, x=MS,label=Patient))+geom_text_repel()+geom_point(position="jitter")+geom_boxplot(aes(color = MS), size = 0.5,alpha=0.5)+NoLegend()
+cowplot::plot_grid(p3,p4)
+```
+

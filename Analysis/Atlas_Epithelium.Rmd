@@ -13,14 +13,13 @@ library(biomaRt)
 library(dplyr)
 gene_lists <- readRDS("/premiumDisk/khoh/Github/scTME/data/gene_lists.rds")
 source('/premiumDisk/khoh/Github/scTME/R/score_sig.R', echo=TRUE)
+source('/premDisk/khoh/Github/scTME/R/pseudobulk_score.R', echo=TRUE)
+source('/premDisk/khoh/Github/scTME/R/pseudobulk.R', echo=TRUE)
 ```
 
 #@ Epithelium 
 ```{r}
-high <- WhichCells(PDACTraining, idents = c("Epithelium"))
-DimPlot(pancreas_merged,cells.highlight = high,reduction = "tsne") +NoLegend()
 Epi<-subset(PDACTraining,CellType1%in%c("Epithelium"))
-
 list_full<-SplitObject(Epi,split.by = "Dataset")
 
 int.features <- SelectIntegrationFeatures(object.list = list_full, nfeatures = 3000)
@@ -44,38 +43,12 @@ Epi <- RunUMAP(object = Epi, assay = "SCT",
                 local.connectivity = 100,
                    n.neighbors = 1000,
                    dims = 1:8)
-
 Epi <- FindNeighbors(object = Epi, assay = "SCT", reduction = "harmony", dims = 1:8)
 Epi <- FindClusters(object = Epi, resolution = 0.6)#0.15 - latest
 DimPlot(Epi,label=T)
-DimPlot(Epi,group.by = c("CellType2"),split.by = "Condition")
-DimPlot(Epi,group.by = c("CellType2","Condition"),label=T)
-DimPlot(Epi,group.by = c("seurat_clusters","Condition"),reduction = "umap",label=T)
-
-FeaturePlot(Epi,features = c("OLFM4","CRISP3"),order=T)
-DimPlot(Epi,split.by = "Condition",label=T)
-DimPlot(Epi,group.by = c("seurat_clusters","Condition"),label=T,reduction = "tsne")
-
-DimPlot(Epi,split.by = "Dataset")
-
-DimPlot(Epi,label=T,group.by = "Phase")
 Epi<-RunTSNE(Epi,reduction = "harmony",dims = 1:14)
 DimPlot(Epi,label=T,reduction = "tsne")
-#saveRDS(Epi,"Epi_Subset2021.rds")
-DimPlot(Epi,group.by=c("Phase","Condition","seurat_clusters"),reduction = "tsne")
-
-DimPlot(Epi,group.by=c("Phase","Condition","seurat_clusters"))
-FeaturePlot(Epi,features=c("MUC1","EPCAM","PRSS1","AMBP","KRT17","TFF3","SOX9","PDX1","BMPR1A","mesenchymal","epithelial","ZEB1","Tuveson_Classical1","Tuveson_Classical2","Tuveson_LipidProcessing","Tuveson_Secretory"),order=T,label=T)
-VlnPlot(Epi,features=c("MUC1","EPCAM","PRSS1","AMBP","KRT17","TFF1","SOX9","PDX1","AMY2B","ZEB1","CRISP3","OLFM4","BMPR1A"),pt.size=0)
-plot_density(Epi,features=c("MUC1","EPCAM","PRSS1","AMBP","KRT17","TFF3","BMPR1A","AKAP12","OLFM4","ZEB1","CRISP3","nFeature_RNA"),size = 0.1)
-plot_density(Epi,features=c("MUC1","EPCAM","PRSS1","AMBP","KRT17","TFF3","BMPR1A","AKAP12","OLFM4","ZEB1","CRISP3","nFeature_RNA","SOX9","NOTCH2","SMAD3","SNAI2"),size = 0.1,reduction = "tsne")
-plot_density(Epi,features=c("MUC1","EPCAM","PRSS1","AMBP","KRT17","TFF3","BMPR1A","AKAP12","OLFM4"),size = 0.1,reduction = "umap")
-plot_density(Epi,features=c("CXCL14","CX3CR1","PRSS1","AMBP","KRT17","TFF3","BMPR1A","AKAP12","OLFM4"),size = 0.1,reduction = "umap")
-VlnPlot(Epi,features = c("MMP7","OLFM4","CRISP3"))
-VlnPlot(Epi,features = c("CXCL14","MMP7"),group.by = "Condition")
-
 ```
-
 
 #>> Epi Heatmap
 ```{r}
@@ -90,8 +63,6 @@ Idents(Epi)<-"CellType2"
 small <- subset(Epi, downsample = 3000)
 DefaultAssay(small)<-"RNA"
 small<-NormalizeData(small)
-#small<-ScaleData(small, vars.to.regress = "Dataset")
-#markers3 <- FindAllMarkers(small,min.pct = 0.2,test.use = "MAST",features = new.genes)
 small<-ScaleData(small,vars.to.regress = "Dataset")
 fullmarkers <- FindAllMarkers(small,min.pct = 0.2,min.diff.pct = 0.1,test.use = "MAST",only.pos = F)
 write.csv(fullmarkers,"EpiCellType2Markers.csv")
@@ -113,7 +84,6 @@ new.cluster.ids <-
     "HSP.Duct",#4
     "EMT.Duct"#5
 )
-
 names(new.cluster.ids) <- levels(Epi)
 Epi <- RenameIdents(Epi, new.cluster.ids)
 Epi$CellType2<-Idents(Epi)
@@ -121,215 +91,17 @@ VlnPlot(Epi,features=c("CDH11","FN1","PRSS1","AMBP","KRT17","TFF3","SOX9","PDX1"
 FeaturePlot(Epi,features=c("CDH11","FN1","KRT17","TFF3","OLFM4"),order=T)
 DimPlot(Epi,label=T)
 saveRDS(Epi,"Epi_Subset2021.rds")
-#Set CellType2 Idents
-#pancreas_merged$CellType2<-as.character(pancreas_merged$CellType1)
-pancreas_merged$CellType2[colnames(Epi)]<-(as.character(Epi$CellType2))
-
-#===============Transcription Factors
-tf<-read.csv("/premiumDisk/khoh/Github/scTME/data/TF_genes.txt",header = F)
-small <- subset(Epi, downsample = 800)
-DefaultAssay(small)<-"RNA"
-small<-NormalizeData(small)
-#small<-ScaleData(small, vars.to.regress = "Dataset")
-#markers3 <- FindAllMarkers(small,min.pct = 0.2,test.use = "MAST",features = new.genes)
-small<-ScaleData(small,vars.to.regress = "Patient")
-fullmarkers <- FindAllMarkers(small,features =rownames(small)%in%tf$V1 )
-
-top10 <- fullmarkers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
-toppval <- fullmarkers %>% group_by(cluster) %>% top_n(n = -10, wt = p_val_adj)
-#Idents(small)<-"seurat_clusters"
-DoHeatmap(small, features = top10$gene,label=T) + NoLegend()
-DoHeatmap(small, features = toppval$gene,label=T) + NoLegend()
 ```
 
-
+# >>Epi Scores
 ```{r}
-gene_lists$acinar<-c("SERPINI2", "BIRC3", "CYB5A", "SGK1", "FAM129A", "CELA2B", "PTGR1", "FGG", "IMPA2", "IFITM3", "MT1G", "CEL", "TM4SF1", "LCN2", "C6orf222","ALB", "PRSS1", "REG1B", "PNLIP", "PRSS3P2", "CPA2", "CTRB2", "CEL", "PLA2G1B")
-gene_lists$ductal<-c("H19","TINAGL1","DCDC2","SEMA6A","NDUFA4","HSD17B2","SERPINA3","TYROBP","IFITM2","KRT23","PIGR","CTSS","LGALS9","TNFSF10","GOLM1","SOD2","SPP1","CFTR","AQP1","ALDH1A3","KRT19","CRP","DEFB1","CEACAM6","MMP7")
-
-# gene_lists$Notta.BasalA<-c("KRT5","KRT6A","KRT14","TP63")
-#  gene_lists$Notta.BasalB<-c("FOXJ1","DRC1","CFAP54","CST6")
-#  gene_lists$Notta.ClassicalA<-c("VSIG","ANXA10","GATA6","LYZ")
-#  gene_lists$Notta.ClassicalB<-c("SPINK4","REG4","BTLN8","KRT20")
-
-  #Montada Spatial Transcriptomics 2020
-  gene_lists$Montada.Hypoxic<-c("APOL1","APOL2","APOL3","CA9","DUOX2","ERO1A")
-  gene_lists$Montada.Centroacinar<-c("AQP3","CFTR","CRISP3","REG1A","REG1B","REG3A")
-  gene_lists$Montada.apDuctal<-c("C1S","C4A","CFB","CFH","CD74","HLA-DPA1","HLA-DRA","HLA-DQA2","HLA-DRB1","HLA-DRB5")
-  gene_lists$Montada.tDuct<-c("KRT16","KRT18","TFF1","TFF2","TFF3")
-
-gene_lists$Califano_Lineage<-c("FOXA2","NR2F6","FOXA3","ETV4","OVOL2","HNF1A","ELF3","ESRRA","CREB3L4","HNF4A","HR","NR0B2","RORC","SOX9","HDAC1","GATA6","HES6","MLX","GATA4","CDX2","CEBPG","NPAS1","ZDHHC9")
-gene_lists$Califano_Morpho<-c("GLI3","ZEB1","BNC2","PRRX1","TCF4","SNAI2","ZEB2","ZFHX4","ZNF521","ZFPM2","KLF12","GAS7","TRPS1","NR3C1","MAF","ZNF532","PHTF2","TEAD1","ETS1","RORA","RUNX2","SMAD7","HOPX","ZNF423","TSHZ3","SMAD7")
-gene_lists$Califano_OP<-c("RFX6","NEUROD1","FOXA3","ELF3")
-#====================================
-gene_lists$Krieger_Origin<-c("STMN1","HMGB1","BIRC5","PTTG1","H2AFZ","TUBA1B","DTYMK","RANBP1","CDC20","CCNB1")
-gene_lists$Krieger_Diff<-c("CEACAM6","CEACAM5","PHGR1","HSPB1","KRT20","ISG20","SDCBP2","GSN","S100P","S100A6")
-gene_lists$Krieger_ReEntry<-c("ATAD2","HELLS","FENS1","GINS2","PCNA","MCM7","MCM5","NASP")
-gene_lists$Pei_ADM<-gene_lists$ADM
-gene_lists$RaghavanIntermediate<-c("KRT5","CAV1","VCAM1","SERPINA1","HOXB2","CX3CL1")
-#gene_lists$peripheral.panc<-x$peripheral.panc
-#gene_lists$central.panc<-x$central.panc
-#gene_lists$EMT<-x$EMT.genes
-gene_lists$Bernard_LG_IPMN<-c("PGC","MUC5AC","CA2","TFF2","MT1G","PSCA","XIST","MT1E","DPCR1","VSIG2","ALDH3A1","MSMB","MYRF","ERN2","MUC6","ANXA10","ASCC2","SULT1C2","MTRNRL2","CYP2C9","RASSF6","ARHGEF16","EPIFB1","COL6A1","MUC2","SPINK4","FCGBP","TFF3","REG4","MEG3","ITLN1","FAM3D","SCNN1A","LGALS4","ATP2C2","CLDN3","HPN","JSRP1","IGFALS","CPE","LRRC26","RAP1GAP","C8orf4","RASD1","ABHD11","")
-gene_lists$Bernard_HG_IPMN<-c("GSTP1","LMO4","CD24","SPINK1","CTSE","S100P","LYZ","SMIM24","TESC","TAGLN2","TFF1","GPX2","SPINK1","CYSTM1","GADD45GIP1","ANXA4","C19orf53","AKR7A3","S100A10","CXCL17","STX10","CA9","MUC6","NBEAL2")
-gene_lists$Bernard_PDAC<-c("KRT17","CDKN2A","TM4SF1","INSR","TNS4","PLAT","LEFTY1","C19orf33","IFITM3","ARHGEF18","EMP1","NCOA7","MYADM","ATF3","MMP7","TOB1","MUC4","TROP2","TACSTD2","LAMC2","PTGS2","SERPINE1","ITPKC","MMP1","RGS5","MUC17","TM4SF4","DUOX2","PDZK1IP1","LCN2","COL17A1","DUOXA2","APOL1","KRT8","DHRS9","GPRC5A","MYO15B","RAMP1","HLA-G","VSTM2L","KRT20","FABP1","PI3","PHGR1","MUC5B","IGFBP1","TINAGL1","SERPINC2","TFPI")
-#===================== 2021 Raghavan Genes
-gene_lists$RaghavanBasal<-c("KRT6A","S100A2","KRT13","KRT17","LY6D","KRT7","KRT5","FAM83A","CD109","GAPDH","CSTA","PTPN13","MTSS1","SPRR1B","SLC2A1","CAV1","EMP1","SEMA3C","DHRS9","CAST","FLNA","SLITRK6","COL7A1","AQP3","MT2A","AHNAK2","KRT19","PKP1","YBX3","GJB5")
-gene_lists$RaghavanClassical<-c("LGALS4","CTSE","TFF1","AGR2","TSPAN8","CEACAM6","LYZ","CDH17","TFF2","CLDN18","REG4","SPINK1","SLC44A4","GPX2","ANXA10","FAM3D","TFF3","MUC13","ANXA13","CEACAM5","VSIG2","PRSS3","ALDH2","IL1R2","AGR3","CYSTM1","CAPN5","S100A6","ONECUT2","BCAS1"
-)
-gene_lists$RaghavanIntermediate<-c("VCAM1","MALAT1","IGFBP3","SYNE2","TIMP2","TNFAIP2","NFAT5","SERPINA1","CXCL14","CX3CL1","ALPK3","ATHL1","DPYSL2","TMEM139","KLF6","KRT23","MEGF6","HOXB2","PADI1","MFSD4","INPP4B","BAIAP3","HMHA1","ECE1","CAMK2N1","SNORD89","WFDC2","TSHZ2","RILPL2","LAMB2")
-#saveRDS(gene_lists,"/premiumDisk/khoh/Github/scTME/data/gene_lists.rds")
 #====================================
 Epi<-score_sig(Epi)
 epi.meta<-Epi@meta.data
 saveRDS(epi.meta,"Epi.Meta.rds")
 plot_density(Epi,features =c( "Moffitt.Basal.25","Moffitt.Classical.25","Qadir_Centroacinar","Qadir_AcinarTrans1","Qadir_AcinarTrans2","Qadir_MigrateProgen","Qadir_StressProgen","Qadir_SmallDucts","ADM","AMBP","MUC1","TFF3","KRT17","CEACAM6","PRSS1","EPCAM","Montada.tDuct","Montada.Centroacinar","Montada.Hypoxic","acinar","ductal","Notta.BasalA","Notta.BasalB","Notta.ClassicalA","Notta.ClassicalB","Califano_Lineage","Califano_Morpho","RaghavanBasal"),size=0.1,reduction = "umap",method = "wkde")
 
-plot_density(Epi,features =c( "Moffitt.Basal.25","Moffitt.Classical.25","Qadir_Centroacinar","Qadir_AcinarTrans1","Qadir_AcinarTrans2","Qadir_MigrateProgen","Qadir_StressProgen","Qadir_SmallDucts","ADM","AMBP","MUC1","TFF3","KRT17","CEACAM6","PRSS1","EPCAM","Montada.tDuct","Montada.Centroacinar","Montada.Hypoxic","acinar","ductal","Notta.BasalA","Notta.BasalB","Notta.ClassicalA","Notta.ClassicalB"),size=0.1,reduction = "tsne",method = "wkde")
-
-
-plot_density(Epi,features =c( "Moffitt.F6_BasalLike.top250","Moffitt.F8_Classical.top250","Qadir_Centroacinar","Qadir_AcinarTrans1","Qadir_AcinarTrans2","Qadir_MigrateProgen","Qadir_StressProgen","Qadir_SmallDucts","ADM","AMBP","MUC1","TFF3","KRT17","CEACAM6","PRSS1","EPCAM","Montada.tDuct","Montada.Centroacinar","Montada.Hypoxic","acinar","ductal","Notta.BasalA","Notta.BasalB","Notta.ClassicalA","Notta.ClassicalB"),size=0.01,reduction = "umap",method = "wkde")
-plot_density(Epi,features =c("Moffitt.F6_BasalLike.top250","Moffitt.F8_Classical.top250","Califano_Lineage","Califano_Morpho"),size=0.01,reduction = "umap",method = "wkde")
-FeaturePlot(Epi,features = c("Moffitt.F6_BasalLike.top250","Moffitt.F8_Classical.top250"),blend = T,reduction = "tsne",cols = c("orange","blue"),order=T)
-FeaturePlot(Epi,features = c("Moffitt.F6_BasalLike.top100","Moffitt.F8_Classical.top100"),blend = T,reduction = "umap",cols = c("orange","blue"),order=T)
-FeaturePlot(Epi,features = c("Califano_Lineage","Califano_Morpho"),blend = T,reduction = "umap",cols = c("orange","blue"),order=T)
-VlnPlot(Epi,features=c("Qadir_Centroacinar","Montada.Centroacinar"))
-VlnPlot(Epi,features=c("Califano_Lineage","Califano_Morpho","Moffitt.Basal.25","Moffitt.Classical.25"),group.by="seurat_clusters",pt.size = 0.1)
-plot_density(Epi,features =c( "Moffitt.F6_BasalLike.top250","Moffitt.F8_Classical.top250","Qadir_Centroacinar","Qadir_AcinarTrans1","Qadir_AcinarTrans2","Qadir_MigrateProgen","Qadir_StressProgen","Qadir_SmallDucts","ADM","AMBP","MUC1","TFF3","KRT17","ductal","Califano_Morpho","Califano_Lineage"))
-FeaturePlot(Epi,features =c("Califano_Lineage","Califano_Morpho","CEACAM6","PRSS1","EPCAM","Montada.tDuct","Montada.Centroacinar","Montada.Hypoxic","acinar","ductal","Notta.BasalA","Notta.BasalB","Notta.ClassicalA","Notta.ClassicalB"),order=T,label=T)
-VlnPlot(Epi,features =c("Moffitt.F6_BasalLike.top25","Moffitt.F8_Classical.top25"),group.by = "seurat_clusters" )
-#--------------------------------------
-tumorgene<-unique(c("acinar","Qadir_AcinarTrans1","Qadir_AcinarTrans2","Montada.Centroacinar","Montada.tDuct","Montada.Hypoxic","Tuveson_Secretory","Qadir_SmallDucts","ductal","epithelial","Qadir_Centroacinar","Tuveson_LipidProcessing","GEM_sensitive","Califano_Lineage","Notta.ClassicalA","Notta.ClassicalB","Tuveson_Classical2","TGFB.Production","Tuveson_Classical1","Qadir_MigrateProgen","Moffitt.F8_Classical.top25","Moffitt.F6_BasalLike.top25","Notta.BasalA","Notta.BasalB","Puram_epi.diff","Puram_stress","Qadir_StressProgen","Califano_Morpho","mesenchymal","IFNG_Production","NFkb_Up","IFNG_Secretion","EMT","Bernard_LG_IPMN","Bernard_HG_IPMN","Bernard_PDAC","Krieger_Origin","Krieger_ReEntry","Krieger_Diff","Califano_OP","RaghavanIntermediate","RaghavanBasal","RaghavanClassical","Pei_ADM","peripheral.panc","central.panc","Puleo.ImmuneClassical","Puleo.PureBasal","Puleo.PureClassical","Puleo.StromaActivated"))
-tumorgene<-unique(c("PRSS1","acinar","Qadir_AcinarTrans1","Qadir_AcinarTrans2","Montada.Centroacinar","Tuveson_Secretory","Qadir_SmallDucts","ductal","AMBP","LEFTY1","SOX9","HNF1B","GATA6","VCAM1","PDX1","NOTCH2","CDX2","BMPR1A","epithelial","HNF4A","EPCAM","Qadir_Centroacinar","Tuveson_LipidProcessing","MUC1","Moffitt.F8_Classical.top25","Moffitt.F8_Classical.top100","Moffitt.F8_Classical.top250","Califano_Lineage","Notta.ClassicalA","Notta.ClassicalB","Notta.BasalB","ELF3","Tuveson_Classical1","Tuveson_Classical2","TGFB.Production","Moffitt.F6_BasalLike.top25","Puram_epi.diff","Moffitt.F6_BasalLike.top100","Moffitt.F6_BasalLike.top250","Qadir_StressProgen","Qadir_MigrateProgen","Notta.BasalA","GEM_sensitive","TFF1","TFF3","KRT7","KRT17","Califano_Morpho","mesenchymal","CAV1","COL1A1","FN1","IFNG_Production","NFkb_Up","SNAI2","ZEB2","CRISP3","SERPINA1","FAM83A","OLFM4","AQP5","DCLK1","OVOL2","TP53","CRISP3","GATA4","GATA6","CEACAM6","CD44","HNF1A","ZEB1","AKAP12","CX3CL1","HOXB2","SMAD3","MUC1","HOXB2","SERPINA1","VCAM1","IFNG_Secretion","NFkb_Down","Montada.tDuct","Montada.apDuctal","Montada.Hypoxic","EMT","Bernard_LG_IPMN","Bernard_HG_IPMN","Bernard_PDAC","Krieger_Origin","Krieger_ReEntry","Krieger_Diff","Califano_OP","RaghavanIntermediate","Pei_ADM","peripheral.panc","central.panc","Puleo.ImmuneClassical","Puleo.PureBasal","Puleo.PureClassical","Puleo.StromaActivated"))
-
-Tumor<-subset(Epi,Condition%in%"Tumor")
-small<-subset(Tumor,downsample=300)
-tmp<-Seurat::FetchData(small,vars=tumorgene)
-meta<-Seurat::FetchData(small,vars=c("seurat_clusters","Condition","Phase","Patient","Glycolytic","Moffitt.F8_Classical.top250","Moffitt.F6_BasalLike.top250","nFeature_SCT","Puram_G1_S","CellType2"))
-rownames(meta) <- rownames(tmp) # check out the row names of annotation
-myPalette <- colorRampPalette(c("darkblue","blue", "white", "red","darkred"))(n = 100) 
-
-pheatmap(as.matrix(tmp),annotation_row = meta,scale = "column",cluster_rows = T,color=myPalette,breaks = seq(from = -3,to  = 3, length.out = length(myPalette)+1) ,cluster_cols =T,clustering_distance_rows = "correlation",cutree_rows = 6,cutree_cols = 6,clustering_method = "ward.D2",labels_row = " ")
-#==============================================================
-km <- kmeans((scale(t(tmp))), 6)
-pheatmap(as.matrix(tmp),annotation_row = meta,scale = "column",cluster_rows = km$cluster,color=myPalette,breaks = seq(from = -3,to  = 3, length.out = length(myPalette)+1) ,cluster_cols =rkm$cluster,clustering_distance_rows = "correlation",cutree_rows =10,clustering_method = "ward.D2",labels_row = " ",cutree_cols = 10)
-#=================================================================
-km <- kmeans((scale(t(tmp))), 8)
-rowmydata<-as.matrix((tmp))
-rkm <- kmeans(t(scale(t(rowmydata))), 10)
-sampletree <- ConsensusClusterPlus::ConsensusClusterPlus(d = t(scale(scale=FALSE,center=TRUE,
-                                                                     x = t(as.matrix(tmp)))),
-                                                         seed = 1234,
-                                                         pFeature = 0.8,
-                                                         pItem = 0.8,
-                                                         maxK = 3,
-                                                         reps=800,
-                                                         distance="pearson",clusterAlg="km"
-                                                         )[[3]]$consensusTree  # 
-tmp.cluster <- c("Normal","Activated","Intermediate")[cutree(tree = sampletree, k = 3)]
-#tmp$Clust <- factor("NA",levels = c("Normal","Activated","Intermediate"))
-heatmap.3(as.matrix(tmp), 
-Rowv=convert_kmeans_to_dendrogram(rkm$cluster),
-#Rowv=TRUE,
-# Rowv=convert_order_to_dendrogram(geneOrder),
- #distfun = function(x) dist(x,method = 'euclidean'),
- distfun=function(x) {as.dist((1-cor(t(x)))/2)},
- # Col =TRUE,
-#Colv=as.dendrogram(sampletree),
-#Colv=convert_order_to_dendrogram(),
-  Colv=convert_kmeans_to_dendrogram(km$cluster),
-  dendrogram = "both",
-  trace="none",
-  margins =c(5,5),
- # labRow = genes[genesToPlot,"gene_short_name"],
- # labCol = samples$rna_match_id[samplesToPlot],
-  col=myPalette,breaks = seq(from = -3,to  = 3, length.out = length(myPalette)+1),
-  scale=c("row"),
-  cexRow = 0.8)
-#===========================
-newdf<-pseudobulkclusters(Epi)
-samples<-pseudobulk_score(newdf)
-genes<-samples[[2]]
-expression<-samples[[3]]
-samples<-samples[[1]]
-
-#pheatmap(samples[,tumorgene])
-pheatmap(samples[,tumorgene],annotation_row = NA,scale = "column",cluster_rows = T,color=myPalette,breaks = seq(from = -3,to  = 3, length.out = length(myPalette)+1) ,cluster_cols =T,clustering_distance_rows = "correlation",cutree_rows = 4,cutree_cols = 4,clustering_method = "ward.D2",labels_row = " ")
-
 ```
-
-
-#>> Epithelium Normal - Only
-```{r}
-Normal<-subset(Epi,Condition %in%"Normal")
-#Normal<-subset(Normal, nFeature_SCT>1000)
-DefaultAssay(Normal)<-"SCT"
-list_full<-SplitObject(Normal,split.by = "Dataset")
-
-int.features <- SelectIntegrationFeatures(object.list = list_full, nfeatures = 2000)
-Segerstolpe <- list_full$Segerstolpe
-list_full$Segerstolpe <- NULL
-Normal <- merge(Segerstolpe, y = c(list_full),  project = "Epithelium", merge.data = TRUE)
-VariableFeatures(Normal) <- int.features
-Normal <- RunPCA(object = Normal, assay = "SCT", npcs = 20)
-Normal <- RunHarmony(object = Normal,
-                                    assay.use = "SCT",
-                                    reduction = "pca",
-                                    dims.use = 1:20,
-                                    group.by.vars = c("Dataset"),
-                                    plot_convergence = TRUE)
-ElbowPlot(Normal,ndims=20,reduction="harmony")
-Normal <- RunUMAP(object = Normal, assay = "SCT", 
-                   reduction = "harmony", 
-                   min.dist = 0.4,
-                local.connectivity =100,
-                negative.sample.rate = 20,
-                   n.neighbors = 200,
-                   dims = 1:10)
-Normal <- FindNeighbors(object = Normal, assay = "SCT", reduction = "harmony", dims = 1:10)
-Normal <- FindClusters(object = Normal, resolution = 0.2)
-DimPlot(Normal,label=T)
-DimPlot(Normal,label=T,group.by = "CellType2")
-Normal<-RunTSNE(Normal,reduction = "harmony",dims = 1:10)
-DimPlot(Normal,label=T,reduction = "tsne")
-FeaturePlot(Normal,features=c("BMPR1A","AKAP12","MUC1","EPCAM","PRSS1","AMBP","KRT17","TFF3","LEFTY1"),order=T,label=T)
-Normal<-score_sig(Normal)
-FeaturePlot(Normal,features =c( "Moffitt.F6_BasalLike.top25","Moffitt.F8_Classical.top25","Qadir_Centroacinar","Qadir_AcinarTrans1","Qadir_AcinarTrans2","Qadir_MigrateProgen","Qadir_StressProgen","Qadir_SmallDucts","ADM","AMBP","MUC1","TFF3","KRT17"),order=T,label=T)
-plot_density(Normal,features =c( "Moffitt.F6_BasalLike.top25","Qadir_Centroacinar","Qadir_AcinarTrans1","Qadir_AcinarTrans2","Qadir_MigrateProgen","Qadir_StressProgen","Qadir_SmallDucts","ADM","AMBP","MUC1","TFF3","KRT17","CRISP3","OLFM4","AKAP12","BMPR1A"),reduction="umap")
-```
-
-
-# Monocle 3
-```{r}
-library(monocle3)
-library(SeuratWrappers)
-#Idents(full)<-
-#sub<-subset(Normal,downsample=1000)
-erythroid.cds <- as.cell_data_set(Normal)
-erythroid.cds <- cluster_cells(cds = erythroid.cds, reduction_method = "UMAP")#,resolution = 0.01,k = 40)
-#erythroid.cds@clusters$UMAP<-sub$seurat_clusters
-#erythroid.cds@colData$cluster<-erythroid.cds@colData$seurat_clusters
-erythroid.cds <- learn_graph(erythroid.cds, use_partition = TRUE,close_loop = T)
-erythroid.cds<-order_cells(erythroid.cds)
-plot_cells(
-  cds = erythroid.cds,
-  color_cells_by = "pseudotime",
-  show_trajectory_graph = TRUE
-)
-plot_cells(
-  cds = erythroid.cds,
-  color_cells_by = "CellType2",
-  show_trajectory_graph = TRUE
-)
-sub <- AddMetaData(
-  object = sub,
-  metadata = erythroid.cds@principal_graph_aux@listData$UMAP$pseudotime,
-  col.name = "Erythroid"
-)
-FeaturePlot(sub, c("Erythroid"), pt.size = 0.1) & scale_color_viridis_c()
-
-```
-#============================================
 
 #>> Epithelium Tumor - Only
 ```{r}
@@ -352,7 +124,6 @@ Tumor$CellType2[x]<-"Normal.Duct"
 table(Tumor$CellType2)
 Tumor$CellType2<-droplevels(Tumor$CellType2)
 
-#Tumor<-subset(Tumor, CellType2%in%c("Neoplastic","EMT.Duct","Acinar","Normal.Duct","LEFTY.Duct"))
 list_full<-SplitObject(Tumor,split.by = "Dataset")
 int.features <- SelectIntegrationFeatures(object.list = list_full, nfeatures = 600)
 Powers <- list_full$Powers
@@ -360,8 +131,6 @@ list_full$Powers <- NULL
 Tumor <- merge(Powers, y = c(list_full),  project = "Epithelium", merge.data = TRUE)
 rm(Powers)
 rm(list_full)
-
-#Tumor<-SCTransform(Tumor,variable.features.n = 3000,vars.to.regress = "Dataset")
 VariableFeatures(Tumor)<- int.features
 Tumor <- RunPCA(object = Tumor, assay = "SCT", npcs = 20)
 Tumor <- RunHarmony(object = Tumor,
@@ -370,15 +139,7 @@ Tumor <- RunHarmony(object = Tumor,
                                     dims.use = 1:20,
                                     group.by.vars = c("Dataset"),
                                     plot_convergence = TRUE)
-ElbowPlot(Tumor,ndims=20,reduction="pca")
-Tumor <- RunUMAP(object = Tumor, assay = "SCT", 
-                   reduction = "harmony", 
-                   min.dist = 0.3,
-                local.connectivity =10,
-                   n.neighbors = 30,
-                negative.sample.rate = 5,
-                n.components = 2,
-                   dims = 1:5)
+
 Tumor <- RunUMAP(object = Tumor, assay = "SCT", 
                    reduction = "pca", 
                   
@@ -389,140 +150,18 @@ Tumor <- RunUMAP(object = Tumor, assay = "SCT",
                    dims = 1:10)
 Tumor<-RunUMAP(object = Tumor,assay="SCT",dims = 1:5,  negative.sample.rate = 10,reduction = "pca",  n.components = 3, local.connectivity =30, n.neighbors = 300,min.dist = 0.2)
 DimPlot(Tumor,label=T)
-
 Tumor <- FindNeighbors(object = Tumor, assay = "SCT", reduction = "pca", dims = 1:5)
 Tumor <- FindClusters(object = Tumor, resolution = 0.2)
 DimPlot(Tumor,label=T)
 DimHeatmap(Tumor,dims = 1:5,reduction = "harmony")
-#Tumor$Clust0.3<-Idents(Tumor)
-#Tumor$Clust0.4<-Idents(Tumor)
-#Tumor$Clust0.4.5<-Idents(Tumor)
+
 Tumor<-score_sig(Tumor)
-DimPlot(Tumor,label=T,group.by = c("CellType2","seurat_clusters","MT"),dims=c(1,3))
-FeaturePlot(Tumor,label=T,reduction = "umap",features = c("KRT17","TFF3","nFeature_RNA"),order=T)
-DimPlot(Tumor,label=T,split.by = "MT",group.by = "CellType2")
-#saveRDS(Tumor,"TumorSubset2021.rds")
-#DimHeatmap(Tumor,dims=c(1:10),reduction = "pca")
 Tumor<-RunTSNE(Tumor,reduction = "harmony",dims = 1:4)
-DimPlot(Tumor,label=T,reduction = "tsne")
-DimPlot(Tumor,label=T,reduction = "tsne",group.by = c("CellType2","seurat_clusters","Dataset"))
-DimPlot(Tumor,label=T,reduction = "umap",group.by = c("CellType2","seurat_clusters","MT"))
-plot_density(Tumor,features=c("VCAM1","CX3CL1","HOXB2","SERPINA1","ELF3","FAM83A","AQP5","KRT7","DCLK1","OVOL2","TP63","AMBP","KRT17","TFF3","OLFM4","LEFTY1"))
-plot_density(Tumor,features=c("VCAM1","CX3CL1","HOXB2","SERPINA1","ELF3","FAM83A","AQP5","KRT7","DCLK1","OVOL2","S100P","AMBP","KRT17","TFF3","OLFM4","LEFTY1"))
-FeaturePlot(Tumor,label=T,reduction = "umap",features = c("AMBP","MUC1","CDH11","KRT17","TFF1","OLFM4","GATA6","PRSS1","S100A2"),order=T)
-FeaturePlot(Tumor,label=T,reduction = "umap",features = c("AMBP","MUC1","CDH11","KRT17","TFF1","OLFM4","GATA6","TGFB2","S100A2"),order=T)
-plot_density(Tumor,features = c("SHH","PTCH1","SMO","GLI1"))
-VlnPlot(Tumor,split.by="MT",group.by = "CellType2",features = c("ADM","EMT","KRT17","RaghavanBasal","RaghavanClassical","RaghavanIntermediate","Qadir_StressProgen","Qadir_MigrateProgen"))
-VlnPlot(Tumor,features=c("RaghavanBasal","RaghavanClassical","RaghavanIntermediate"),group.by="CellType2")
-FeaturePlot(Tumor,features=c("RaghavanBasal","RaghavanClassical","RaghavanIntermediate","Qadir_StressProgen","Qadir_MigrateProgen"),order=T,label=T)
-FeaturePlot(Tumor,features=c("SPP1","CXCL14","KRT17","TFF3","OLFM4"),order=T,label=T)
-plot_density(Tumor,features=c("IFNG_Production","NFkb_Up","IFNG_Secretion","EMT","Bernard_LG_IPMN","Bernard_HG_IPMN","Bernard_PDAC","Krieger_Origin","Krieger_ReEntry","Krieger_Diff","Califano_OP","RaghavanIntermediate","Pei_ADM","peripheral.panc","central.panc","RaghavanBasal","RaghavanClassical","Moffitt.Classical.25","Moffitt.Basal.25","SPP1"))
-plot_density(Tumor,features=c("TGFB.Production","Puram_hypoxia","Puram_epi.diff","Puleo.StromaActivated","Puleo.ImmuneClassical","Puleo.PureBasal","Notta.BasalA","Notta.BasalB","Notta.ClassicalA","Notta.ClassicalB","Moffitt.Basal.25","Moffitt.Classical.25","Qadir_StressProgen","Qadir_MigrateProgen","NECTIN2","Qadir_Centroacinar"))
-plot_density(Tumor,features=c("RaghavanBasal","RaghavanClassical","RaghavanIntermediate"))
-FeaturePlot(Tumor,features=c("Moffitt.Basal.25","Moffitt.Classical.25"),order=T,blend = T,cols = c("grey","orange","blue"))
-FeatureScatter(Tumor,feature1="RaghavanBasal",feature2="RaghavanClassical",pt.size = 0.1,group.by = "Patient")+facet_grid(~Patient)
-DimPlot(Tumor,reduction = "harmony",group.by = "CellType2")
-VlnPlot(Tumor,features = "RaghavanBasal",sort=T)+scale_fill_discrete(guide=FALSE)
-VlnPlot(Tumor,features = "RaghavanClassical",sort=T)+scale_fill_discrete(guide=FALSE)
 
-#==================================================
-DotPlot(Tumor,features=unique(c("VCAM1","CX3CL1","HOXB2","SERPINA1","ELF3","FAM83A","AQP5","KRT7","DCLK1","OVOL2","TP63","AMBP","KRT17","TFF3","OLFM4","LEFTY1","GATA6","PDX1","HNF4A","HNF1B","SOX9","GATA4","HNF1A","CDX2","ZEB1","NOTCH2","ZEB2","SMAD3","GLI2","GLI3","ZBED2","SNAI2","MUC1","TFF1","HOXB2","SERPINA1","KRT5","CAV1","COL1A1","FN1","CHGA","CHGA","MUC1","EPCAM","PRSS1","AMBP","KRT17","TFF3","BMPR1A","AKAP12","OLFM4","Califano_Morpho","Califano_Lineage","Qadir_StressProgen","CRISP3","Qadir_Centroacinar","Notta.BasalA","Notta.BasalB","Notta.ClassicalA","Notta.ClassicalB","Moffitt.Classical.25","Moffitt.Basal.25")),cluster.idents = T)+RotatedAxis()
-tumorgene<-unique(c("PRSS1","acinar","Qadir_AcinarTrans1","Qadir_AcinarTrans2","Montada.Centroacinar","Tuveson_Secretory","Qadir_SmallDucts","ductal","AMBP","LEFTY1","SOX9","HNF1B","GATA6","VCAM1","PDX1","NOTCH2","CDX2","BMPR1A","epithelial","HNF4A","EPCAM","Qadir_Centroacinar","Tuveson_LipidProcessing","MUC1","Moffitt.F8_Classical.top25","Moffitt.F8_Classical.top100","Moffitt.F8_Classical.top250","Califano_Lineage","Notta.ClassicalA","Notta.ClassicalB","Notta.BasalB","ELF3","Tuveson_Classical1","Tuveson_Classical2","TGFB.Production","Moffitt.F6_BasalLike.top25","Puram_epi.diff","Moffitt.F6_BasalLike.top100","Moffitt.F6_BasalLike.top250","Qadir_StressProgen","Qadir_MigrateProgen","Notta.BasalA","GEM_sensitive","TFF1","TFF3","KRT7","KRT17","Califano_Morpho","mesenchymal","CAV1","COL1A1","FN1","IFNG_Production","NFkb_Up","GLI3","SNAI2","ZEB2","CRISP3","SERPINA1","FAM83A","OLFM4","AQP5","DCLK1","OVOL2","TP63","CRISP3","GATA4","GATA6","CEACAM6","CD44","HNF1A","ZEB1","AKAP12","CX3CL1","HOXB2","SMAD3","GLI2","ZBED2","MUC1","HOXB2","SERPINA1","CHGA","CHGB","VCAM1","IFNG_Secretion","NFkb_Down","Montada.tDuct","Montada.apDuctal","Montada.Hypoxic","EMT","Bernard_LG_IPMN","Bernard_HG_IPMN","Bernard_PDAC","Krieger_Origin","Krieger_ReEntry","Krieger_Diff","Califano_OP","RaghavanBasal","RaghavanClassical","RaghavanIntermediate","Pei_ADM","peripheral.panc","central.panc"))
-tumorgene<-unique(c("acinar","Qadir_AcinarTrans1","Qadir_AcinarTrans2","Montada.Centroacinar","Tuveson_Secretory","Qadir_SmallDucts","ductal","epithelial","Qadir_Centroacinar","Tuveson_LipidProcessing","GEM_sensitive","Califano_Lineage","Notta.ClassicalA","Notta.ClassicalB","Tuveson_Classical2","TGFB.Production","Tuveson_Classical1","Qadir_MigrateProgen","Moffitt.F8_Classical.top25","Moffitt.F6_BasalLike.top25","Notta.BasalA","Notta.BasalB","Puram_epi.diff","Qadir_StressProgen","Califano_Morpho","mesenchymal","IFNG_Production","NFkb_Up","IFNG_Secretion","EMT","Bernard_LG_IPMN","Bernard_HG_IPMN","Bernard_PDAC","Krieger_Origin","Krieger_ReEntry","Krieger_Diff","Califano_OP","Pei_ADM","peripheral.panc","central.panc","RaghavanBasal","RaghavanClassical","RaghavanIntermediate"))
-tumorgene<-unique(c("acinar","Qadir_AcinarTrans1","Qadir_AcinarTrans2","Montada.Centroacinar","Tuveson_Secretory","Qadir_SmallDucts","ductal","epithelial","Qadir_Centroacinar","Tuveson_LipidProcessing","GEM_sensitive","Califano_Lineage","Notta.ClassicalA","Notta.ClassicalB","Tuveson_Classical2","TGFB.Production","Tuveson_Classical1","Qadir_MigrateProgen","Moffitt.F8_Classical.top25","Moffitt.F6_BasalLike.top25","Notta.BasalA","Notta.BasalB","Puram_epi.diff","Qadir_StressProgen","Califano_Morpho","mesenchymal","EMT","Bernard_LG_IPMN","Bernard_HG_IPMN","Bernard_PDAC","Krieger_Origin","Krieger_ReEntry","Krieger_Diff","Califano_OP","RaghavanIntermediate","Pei_ADM","peripheral.panc","central.panc"))
-tumorgene<-unique(c("acinar","Qadir_AcinarTrans1","Qadir_AcinarTrans2","Montada.Centroacinar","Tuveson_Secretory","Qadir_SmallDucts","ductal","epithelial","Qadir_Centroacinar","Tuveson_LipidProcessing","GEM_sensitive","Califano_Lineage","Notta.ClassicalA","Notta.ClassicalB","Tuveson_Classical2","TGFB.Production","Tuveson_Classical1","Qadir_MigrateProgen","Moffitt.F8_Classical.top25","Moffitt.F6_BasalLike.top25","Notta.BasalA","Notta.BasalB","Puram_epi.diff","Qadir_StressProgen","Califano_Morpho","mesenchymal","EMT","Bernard_LG_IPMN","Bernard_HG_IPMN","Bernard_PDAC","Krieger_Origin","Krieger_ReEntry","Krieger_Diff","Califano_OP","RaghavanIntermediate","Pei_ADM","peripheral.panc","central.panc","TGFB.Production","Puram_hypoxia","Puram_epi.diff","Puleo.StromaActivated","Puleo.ImmuneClassical","Puleo.PureBasal","Notta.BasalA","Notta.BasalB","Notta.ClassicalA","Notta.ClassicalB","Moffitt.Basal.25","Moffitt.Classical.25","Qadir_StressProgen","Qadir_MigrateProgen","Qadir_SmallDucts","Qadir_Centroacinar"))
-
-tumorgene<-c("PAC_resistant","PAC_sensitive","FiveFU_resistant","FiveFU_sensitive","GEM_resistant","GEM_sensitive","OXA_resistant","OXA_sensitive")
-tumorgene<-c("Moffitt.F8_Classical.top250","Moffitt.F8_Classical.top100","Moffitt.F8_Classical.top25","Moffitt.F6_BasalLike.top25","Moffitt.F6_BasalLike.top100","Moffitt.F6_BasalLike.top250")
-Tumor$seurat_clusters<-factor(Tumor$seurat_clusters,levels=c('5','2','4','3','0','6','1','7'))
-Tumor$seurat_clusters<-factor(Tumor$seurat_clusters,levels=rev(levels(Tumor$seurat_clusters)))
-#PDACTraining$CellType3<-fct_rev(PDACTraining$CellType3)
-Idents(Tumor)<-"" #Fig 3
-#====================================================================
-DotPlot(Tumor,features=tumorgene,cluster.idents=T,col.min=0,col.max=3,dot.min=0.01,scale.by = "size",dot.scale=6,group.by = "seurat_clusters")+theme(axis.text.x = element_text(angle = 90,  hjust = 1))#+coord_flip()
-#====================================================================
-#DoHeatmap(Tumor,features=tumorgene)
-Idents(Tumor)<-"seurat_clusters"
-#small<-subset(Tumor,nFeature_SCT>1000)
-small<-subset(Tumor,downsample=1000)
-tmp<-Seurat::FetchData(small,vars=tumorgene)
-meta<-Seurat::FetchData(small,vars=c("seurat_clusters","Phase","Patient","Glycolytic","Moffitt.F8_Classical.top25","Moffitt.F6_BasalLike.top25","nFeature_SCT","Puram_G1_S","CellType2","Clust0.3","Clust0.4","Clust0.4.5"))
-rownames(meta) <- rownames(tmp) # check out the row names of annotation
-myPalette <- colorRampPalette(c("darkblue","blue", "white", "red","darkred"))(n = 100) 
+#saveRDS(Tumor,"TumorSubset2021.rds")
 ```
 
-# Pheatmap
-```{r}
-Idents(Tumor)<-"seurat_clusters"
-#small<-subset(Tumor,nFeature_SCT>1000)
-small<-subset(Tumor,downsample=2000)
-tmp<-Seurat::FetchData(small,vars=tumorgene)
-meta<-Seurat::FetchData(small,vars=c("seurat_clusters","Phase","Patient","Glycolytic","Moffitt.F8_Classical.top25","Moffitt.F6_BasalLike.top25","nFeature_SCT","MT","Puram_G1_S","CellType2","Clust0.4","Clust0.4.5"))
-rownames(meta) <- rownames(tmp) # check out the row names of annotation
-myPalette <- colorRampPalette(c("darkblue","blue", "white", "red","darkred"))(n = 100) 
-pheatmap(as.matrix(tmp),annotation_row = meta,scale = "column",cluster_rows = T,color=myPalette,breaks = seq(from = -3,to  = 3, length.out = length(myPalette)+1) ,cluster_cols =T,clustering_distance_rows = "euclidean",cutree_rows = 8,cutree_cols = 8,clustering_method = "ward.D2",labels_row = "")
-```
-
-```{r}
-#====================================================================
-plot_density(Tumor,features=c("GATA6","PDX1","HNF4A","HNF1B","SOX9","GATA4","HNF1A","CDX2","ZEB1","NOTCH2","ZEB2","SMAD3","GLI2","GLI3","ZBED2","SNAI2"),size = 0.1,reduction = "umap")
-plot_density(Tumor,features=c("MUC1","TFF1","HOXB2","SERPINA1","KRT5","CAV1","COL1A1","FN1","CHGA","CHGA"),size = 0.1,reduction = "umap")
-
-plot_density(Tumor,features=c("EPCAM","AMBP","KRT17","TFF3","OLFM4","CRISP3"),size = 0.1,reduction = "umap")
-plot_density(Tumor,features=c("EPCAM","AMBP","KRT17","TFF3","OLFM4","CRISP3"),size = 0.1,reduction = "tsne")
-FeaturePlot(Tumor,features=c("CD24","ADRA2A","CRISP3","VCAM1","MMP7","CFB","AMBP","KCNJ15","OLFM4","CD74","IFI6","LEFTY1"),order=T,reduction = "umap",label=T)
-FeaturePlot(Tumor,features=c("KRT17","TFF3","CRISP3","VCAM1","AKAP12","HOXB2","AMBP","BMPR1A","OLFM4","Moffitt.Basal.25","Moffitt.Classical.25"),order=T,reduction = "umap",label=T)
-
-plot_density(Tumor,features=c("CD44","KRT17","TFF1","CLDN18","HOXB2","NFAT5","VCAM1"),size = 0.1,reduction = "umap")
-
-FeaturePlot(Tumor,features=c("KRT17","TFF3","CRISP3","VCAM1","AKAP12","HOXB2","AMBP","BMPR1A","OLFM4"),order=T,reduction = "umap",label=T)
-plot_density(Tumor,features=c("MUC1","EPCAM","PRSS1","AMBP","KRT17","TFF3","BMPR1A","AKAP12","OLFM4","CRISP3","Califano_Morpho","Califano_Lineage","Moffitt.Basal.25","Moffitt.Classical.25","epithelial","mesenchymal"),size = 0.1,reduction = "umap")
-plot_density(Tumor,features=c("MUC1","EPCAM","PRSS1","AMBP","KRT17","TFF3","BMPR1A","AKAP12","OLFM4","Califano_Morpho","Califano_Lineage","Qadir_StressProgen","CRISP3","Qadir_Centroacinar","Notta.BasalA","Notta.BasalB","Notta.ClassicalA","Notta.ClassicalB","Moffitt.Classical.25","Moffitt.Basal.25"),size = 0.1,reduction = "umap")
-plot_density(Tumor,features=c("MUC1","EPCAM","PRSS1","AMBP","KRT17","TFF3","BMPR1A","AKAP12","OLFM4","Califano_Morpho","Califano_Lineage","Qadir_StressProgen","CRISP3","Qadir_Centroacinar","Notta.BasalA","Notta.BasalB","Notta.ClassicalA","Notta.ClassicalB","Moffitt.Classical.25","Moffitt.Basal.25"),size = 0.1,reduction = "tsne")
-FeaturePlot(Tumor,features=c("MUC1","EPCAM","acinar","AMBP","KRT17","TFF3","ductal"),order=T,label=T)
-VlnPlot(Tumor,features=c("TFF3","KRT17"),group.by = "CellType2")
-plot_density(Tumor,features = c("Moffitt.F6_BasalLike.top250","Moffitt.F8_Classical.top250","Califano_Lineage","Califano_Morpho","acinar","ductal","Notta.BasalA","Notta.BasalB","Notta.ClassicalA","Notta.ClassicalB","ADM","Qadir_Centroacinar","Qadir_AcinarTrans1","Qadir_MigrateProgen","Qadir_StressProgen","Qadir_SmallDucts"),reduction = "umap")
-plot_density(Tumor,features = c("Moffitt.F6_BasalLike.top25","Moffitt.F8_Classical.top25","Califano_Lineage","Califano_Morpho","Califano_OP","acinar","ductal","Notta.BasalA","Notta.BasalB","Pei_ADM","Qadir_Centroacinar","Qadir_AcinarTrans1","Qadir_MigrateProgen","Qadir_StressProgen","Qadir_SmallDucts","RaghavanIntermediate","Krieger_Diff","Krieger_ReEntry","Krieger_Origin"),reduction = "umap")
-
-FeaturePlot(Tumor,features="BMPR1A")
-#==================================================
-#Add Additional Signatures
-
-FeaturePlot(Tumor,features = c("Moffitt.F6_BasalLike.top25","Moffitt.F8_Classical.top25"),blend = T,reduction = "umap",cols = c("orange","blue"),order=T)
-FeaturePlot(Tumor,features = c("Califano_Lineage","Califano_Morpho"),blend = T,reduction = "umap",cols = c("orange","blue"))
-FeaturePlot(Tumor,features = c("Moffitt.F6_BasalLike.top100","Moffitt.F8_Classical.top100"),blend = T,reduction = "umap",cols = c("orange","blue"),order=T)
-plot_density(Tumor,features =c( "Moffitt.F6_BasalLike.top250","Moffitt.F8_Classical.top250","Qadir_Centroacinar","Qadir_AcinarTrans1","Qadir_AcinarTrans2","Qadir_MigrateProgen","Qadir_StressProgen","Qadir_SmallDucts","ADM","AMBP","MUC1","TFF3","KRT17","CEACAM6","PRSS1","EPCAM","Montada.tDuct","Montada.Centroacinar","Montada.Hypoxic","acinar","ductal","Notta.BasalA","Notta.BasalB","Notta.ClassicalA","Notta.ClassicalB"),size=0.01,reduction = "tsne",method = "wkde")
-plot_density(Tumor,features =c( "Moffitt.F6_BasalLike.top250","Moffitt.F8_Classical.top250","Qadir_Centroacinar","Qadir_AcinarTrans1","Qadir_AcinarTrans2","Qadir_MigrateProgen","Qadir_StressProgen","Qadir_SmallDucts","ADM","AMBP","MUC1","TFF3","KRT17","CEACAM6","PRSS1","EPCAM","Montada.tDuct","Montada.Centroacinar","Montada.Hypoxic","acinar","ductal","Notta.BasalA","Notta.BasalB","Notta.ClassicalA","Notta.ClassicalB","Califano_Lineage","Califano_Morpho"),size=0.01,reduction = "tsne",method = "wkde")
-plot_density(Tumor,features =c( "Moffitt.F6_BasalLike.top250","Moffitt.F8_Classical.top250","Qadir_Centroacinar","Qadir_AcinarTrans1","Qadir_AcinarTrans2","Qadir_MigrateProgen","Qadir_StressProgen","Qadir_SmallDucts","ADM","EPCAM","Montada.tDuct","Montada.Centroacinar","Montada.Hypoxic","acinar","ductal","Notta.BasalA","Notta.BasalB","Notta.ClassicalA","Notta.ClassicalB","Califano_Lineage","Califano_Morpho"),size=0.01,reduction = "umap",method = "wkde")
-plot_density(Tumor,features =c( "Moffitt.F6_BasalLike.top250","Moffitt.F8_Classical.top250","Qadir_Centroacinar","Qadir_AcinarTrans1","Qadir_AcinarTrans2","Qadir_MigrateProgen","Qadir_StressProgen","Qadir_SmallDucts","ADM","EPCAM","Montada.tDuct","Montada.Centroacinar","Montada.Hypoxic","acinar","ductal","Notta.BasalA","Notta.BasalB","Notta.ClassicalA","Notta.ClassicalB"),size=0.01,reduction = "harmony",method = "wkde",dims = c(2,3))
-
-Tumor<-score_sig(Tumor)
-TumorMeta<-Tumor@meta.data
-saveRDS(TumorMeta,"TumorMeta2021.rds")
-plot_density(Tumor,features =c( "Moffitt.Basal.25","Moffitt.Classical.25","Qadir_Centroacinar","Qadir_AcinarTrans1","Qadir_AcinarTrans2","Qadir_MigrateProgen","Qadir_StressProgen","Qadir_SmallDucts","ADM","AMBP","MUC1","TFF3","KRT17","CEACAM6","PRSS1","EPCAM","Montada.tDuct","Montada.Centroacinar","Montada.Hypoxic","acinar","ductal","Notta.BasalA","Notta.BasalB","Notta.ClassicalA","Notta.ClassicalB","Califano_Lineage","Califano_Morpho"),size=0.1,reduction = "umap",method = "wkde")
-VlnPlot(Tumor,features =c("Moffitt.F6_BasalLike.top100","Moffitt.F8_Classical.top100"))
-FeatureScatter(Tumor,feature1="Moffitt.F6_BasalLike.top100",feature2="Moffitt.F8_Classical.top100",smooth = F,pt.size = 0.2)
-heatmap(table(Tumor$Patient,Tumor$seurat_clusters))
-#set basal/classical
-#=================================================
-tot<-unname(table(Tumor$Patient))
-basal.p<-round((unname(table(subset(Tumor,seurat_clusters%in%1)$Patient))/tot)*100)
-classical.p<-round((unname(table(subset(Tumor,seurat_clusters%in%0)$Patient))/tot)*100)
-B2C<-(unname(table(subset(Tumor,seurat_clusters%in%1)$Patient))/unname(table(subset(Tumor,seurat_clusters%in%0)$Patient)))
-#B2C=basal.p/classical.p
-x<-as.data.frame(cbind(Patient=unique(Tumor$Patient),x=basal.p,y=classical.p,B2C=B2C))
-ggplot(x,aes(x=B2C))+geom_density()+RotatedAxis()
-ggplot(x,aes(x=forcats::fct_reorder(Patient,B2C),y=B2C))+geom_point()+RotatedAxis()
-
-ggplot(Tumor@meta.data,aes(x=Patient,fill=seurat_clusters))+geom_bar()
-
-
-p<-ggplot(Tumor@meta.data, aes(x=Moffitt.F6_BasalLike.top25, y=Moffitt.F8_Classical.top25,color=seurat_clusters)) +
-  geom_point(size=0.1, shape=1)+facet_wrap(~Patient) +geom_rug()+ggtitle("Moffitt Subtype 250 [Neoplastic]")#+scale_color_manual(values=c("orange", "blue"))
-print(p)
-```
-
-# Neoplasm Subset
+#@ Neoplasm Subset
 ```{r}
 neo<-subset(Tumor,seurat_clusters%in%c(1))
 DimPlot(neo)
@@ -545,9 +184,10 @@ neo<-FindClusters(neo,resolution = 0.1)
 DimPlot(neo)
 DimPlot(neo,group.by="MT")
 FeaturePlot(neo,features=c("Moffitt.Basal.25"),order=T)
-VlnPlot(neo,features=c("Moffitt.Classical.25","Moffitt.Basal.25","RaghavanIntermediate"),group.by="MT")
+VlnPlot(neo,features=c("Moffitt.Classical.25","Moffitt.Basal.25","RaghavanIntermediate"),group.by="MT") #Figure 4
 ```
 
+# Subtype ScatterPlots
 ```{r}
 subset<-c("peng_T17","peng_T6","peng_T4","peng_T3","peng_T24","peng_T20","peng_T2","peng_T18","peng_T14","peng_T1","peng_T10","peng_T15","peng_T22","peng_T13","PDAC2","peng_T5","peng_T7","peng_T9","peng_T8","peng_T23","peng_T21","PDAC1","peng_T19","peng_T16","peng_T11")
 neo<-subset(neo,Patient%in%subset)
@@ -566,173 +206,18 @@ expression<-output[[3]]
 samplesToPlot <- which((!samples$note %in% "OK"))
 ```
 
-# Metaplastic Enrichment
+# Pseudobulk Sample ScatterPlot
 ```{r}
-Tumor2<-subset(Tumor,CellType2%in%c("Neoplastic","Metaplastic"))
-
-newdf<-Seurat::AggregateExpression(Tumor2,group.by = "CellType2",slot = "counts",assays = "SCT")
-#newdf<-newdf$SCT[!rowSums(newdf$SCT)<10,]
-newdf<-newdf$SCT
-meta<-data.frame("CellType2"=colnames(newdf))
-meta$cat<-"Other"
-x<-meta$CellType2%in%c("Metaplastic")
-meta$cat[x]<-"Metaplastic"
-table(meta$cat)
-
-#===========================================================
-mRNA <- DESeqDataSetFromMatrix(countData =as.matrix(newdf),
-                              colData = meta,
-                              design= ~ cat)
-mRNA <- estimateSizeFactors( mRNA )
-mRNA$cat <- factor(mRNA$cat, levels = c("Other","Metaplastic"))
-mRNA$cat <- relevel(mRNA$cat, ref = "Metaplastic")
-mRNA <- mRNA[ rowSums(counts(mRNA)) > 20, ]
-dds <- DESeq2::DESeq(mRNA)
-res <- results(dds)
-#res <- results(dds,lfcThreshold = 0.25,alpha = 0.05)
-##Volcano
-x<-res$log2FoldChange
-df<-data.frame(rownames(res),x)
-#============================================
-resSig <- subset(res, padj < 0.1&abs(log2FoldChange)>0.5)
-resSig$SYMBOL<-rownames(resSig)
-#resSig<-subset(resSig,SYMBOL%in%c(gene_lists$secretome,gene_lists$contact,gene_lists$ecm))
-resSig<-data.frame(resSig@listData)
-y <- mutate(resSig, ordering = abs(padj)) %>%
-        arrange(desc(ordering)) %>%top_n(100)
-ggplot(y, aes(log2FoldChange, forcats::fct_reorder(SYMBOL, log2FoldChange), fill = padj), showCategory=(n*2)) + 
-      geom_bar(stat='identity') + 
-      scale_fill_continuous(low='red', high='blue', guide=guide_colorbar(reverse=TRUE)) + 
-      theme_minimal() + ylab(NULL)
-VlnPlot(Tumor,features = c("LY6K","KRT20","PRODH","KRT81","ULBP2","BCAT1","CXCL14"),group.by = "MT")
-VlnPlot(Tumor,features = c("ALAD","NPY1R","RDH10"),group.by = "CellType2")
-
-out<-intersect(resSig$SYMBOL,c(gene_lists$secretome,gene_lists$contact))
-VlnPlot(Tumor,features = c("APP","LTF"),group.by = "CellType2")
-
-```
-
-
-```{r}
-subtypes<-create.classif(dat=expression,
-                         fit=pdac::Moffitt_classifier_2019$fit,
-                         classifier=pdac::Moffitt_classifier_2019)
-samples$singleSampleTumor <- subtypes$predprob[,1,drop=TRUE]
-
-p <- ggplot(data = samples)
-p <- p + geom_histogram(aes(x=MT),
-                        breaks = seq(from = 0,to = 1,length.out = 31),
-                        color = "black",
-                        fill = colorRampPalette(c("blue","white","orange"))(30))
-#p <- p
-print(p)
 samples$MT<-"Classical"
 x<-samples$Patient%in%c("peng_T12","peng_T11","peng_T16","peng_T19","PDAC1","peng_T21","peng_T23","peng_T8","peng_T9","peng_T7")
 samples$MT[x]<-"Basal"
 x<-samples$Patient%in%c("peng_T5","PDAC2","peng_T13","peng_T22","peng_T15")
 samples$MT[x]<-"Mixed"
-table(samples$MT)
 
-
-p<-ggplot(samples, aes(RaghavanBasal, RaghavanClassical,label=Patient)) +
-  geom_point(size=4,aes(color = Patient), size = 1,alpha=0.5)+RotatedAxis()+NoLegend()#+geom_label()
-print(p)
-#========================================
+#======================================== 
 p<-ggplot(samples, aes(Moffitt.F6_BasalLike.top25, Moffitt.F8_Classical.top25,label=Patient)) +geom_text_repel()+
   geom_point(aes(color = MT), size = 3,alpha=0.5)+RotatedAxis()+NoLegend()
 print(p)
-```
-
-# Basal/Classical Signaling 
-```{r}
-neo2<-subset(neo,MT%in%c("Basal","Classical"))
-newdf<-Seurat::AggregateExpression(neo2,group.by = "Patient",slot = "counts",assays = "SCT")
-#newdf<-newdf$SCT[!rowSums(newdf$SCT)<10,]
-newdf<-newdf$SCT
-meta<-data.frame("Patient"=colnames(newdf))
-
-
-meta$MT<-"Classical"
-x<-meta$Patient%in%c("peng_T12", "peng_T11", "peng_T16","peng_T19", "peng_T21", "peng_T23", "peng_T8", "peng_T9","peng_T7", "PDAC1")
-meta$MT[x]<-"Basal"
-table(meta$MT)
-#===========================================================
-mRNA <- DESeqDataSetFromMatrix(countData =as.matrix(newdf),
-                              colData = meta,
-                              design= ~ MT)
-mRNA <- estimateSizeFactors( mRNA )
-mRNA$MT <- factor(mRNA$MT, levels = c("Classical","Basal"))
-mRNA$MT <- relevel(mRNA$MT, ref = "Basal")
-mRNA <- mRNA[ rowSums(counts(mRNA)) > 20, ]
-dds <- DESeq2::DESeq(mRNA)
-res <- results(dds)
-#res <- results(dds,lfcThreshold = 0.25,alpha = 0.05)
-##Volcano
-x<-res$log2FoldChange
-df<-data.frame(rownames(res),x)
-#============================================
-resSig <- subset(res, padj < 0.1&abs(log2FoldChange)>0.8)
-resSig$SYMBOL<-rownames(resSig)
-resSig<-subset(resSig,SYMBOL%in%c(tf,secretome,ecm,contact))
-resSig<-data.frame(resSig@listData)
-y <- mutate(resSig, ordering = abs(log2FoldChange)) %>%
-        arrange(desc(ordering)) %>%top_n(30)
-ggplot(y, aes(log2FoldChange, forcats::fct_reorder(SYMBOL, log2FoldChange), fill = padj), showCategory=(n*2)) + 
-      geom_bar(stat='identity') + 
-      scale_fill_continuous(low='red', high='blue', guide=guide_colorbar(reverse=TRUE)) + 
-      theme_minimal() + ylab(NULL)
-VlnPlot(neo,features = c("APOA1","TFF3","IL1A","KRT81"),group.by = "MT")
-
-out<-intersect(resSig$SYMBOL,c(gene_lists$secretome,gene_lists$contact))
-VlnPlot(neo,features = c("IL1A","TFF3"),group.by = "MT")
-
-```
-
-# Mixed Group Signaling
-```{r}
-#neo2<-subset(neo,MT%in%c("Basal","Classical"))
-newdf<-Seurat::AggregateExpression(neo,group.by = "Patient",slot = "counts",assays = "SCT")
-#newdf<-newdf$SCT[!rowSums(newdf$SCT)<10,]
-newdf<-newdf$SCT
-meta<-data.frame("Patient"=colnames(newdf))
-meta$MT<-"Classical"
-x<-meta$Patient%in%c("peng_T12","peng_T11","peng_T16","peng_T19","PDAC1","peng_T21","peng_T23","peng_T8","peng_T9","peng_T7")
-meta$MT[x]<-"Basal"
-x<-meta$Patient%in%c("peng_T5","PDAC2","peng_T13","peng_T22","peng_T15")
-meta$MT[x]<-"Mixed"
-table(meta$MT)
-
-#===========================================================
-mRNA <- DESeqDataSetFromMatrix(countData =as.matrix(newdf),
-                              colData = meta,
-                              design= ~ MT)
-mRNA <- estimateSizeFactors( mRNA )
-mRNA$MT <- factor(mRNA$MT, levels = c("Classical","Basal","Mixed"))
-mRNA$MT <- relevel(mRNA$MT, ref = "Mixed")
-mRNA <- mRNA[ rowSums(counts(mRNA)) > 20, ]
-dds <- DESeq2::DESeq(mRNA)
-res <- results(dds)
-#res <- results(dds,lfcThreshold = 0.25,alpha = 0.05)
-##Volcano
-x<-res$log2FoldChange
-df<-data.frame(rownames(res),x)
-#============================================
-resSig <- subset(res, padj < 0.1&abs(log2FoldChange)>0.25)
-resSig$SYMBOL<-rownames(resSig)
-#resSig<-subset(resSig,SYMBOL%in%c(gene_lists$secretome,gene_lists$contact))
-resSig<-data.frame(resSig@listData)
-y <- mutate(resSig, ordering = abs(padj)) %>%
-        arrange(desc(ordering)) %>%top_n(50)
-ggplot(y, aes(log2FoldChange, forcats::fct_reorder(SYMBOL, log2FoldChange), fill = padj), showCategory=(n*2)) + 
-      geom_bar(stat='identity') + 
-      scale_fill_continuous(low='red', high='blue', guide=guide_colorbar(reverse=TRUE)) + 
-      theme_minimal() + ylab(NULL)
-VlnPlot(neo,features = c("LY6K","KRT20","PRODH","KRT81","ULBP2","BCAT1","CXCL14"),group.by = "MT")
-VlnPlot(neo,features = c("ALAD","RBM47","RDH10"),group.by = "MT")
-
-out<-intersect(resSig$SYMBOL,c(gene_lists$secretome,gene_lists$contact))
-VlnPlot(neo,features = c("IL1A","TFF3","IL1A","KRT81"),group.by = "MT")
-
 ```
 
 
@@ -836,427 +321,4 @@ plot_ly(data = plot.data,
 ```
 
 
-#>> Tumor Heatmap
-```{r}
-Tumor<-BuildClusterTree(Tumor,dims = 1:8,reorder = T)
-PlotClusterTree(Tumor)
-table(Tumor$seurat_clusters)
-Idents(Tumor)<-"CellType2"
-small <- subset(Tumor, downsample = 1000)
-DefaultAssay(small)<-"RNA"
-small<-NormalizeData(small)
 
-small<-ScaleData(small,features = rownames(Tumor))#,vars.to.regress = "Dataset")
-fullmarkers <- FindAllMarkers(small,min.pct = 0.2,min.diff.pct = 0.2,test.use = "MAST",only.pos = F)
-
-top10 <- fullmarkers %>% group_by(cluster) %>% top_n(n = 15, wt = avg_log2FC)
-
-toppval <- fullmarkers %>% group_by(cluster) %>% top_n(n = -5, wt = p_val_adj)
-#Idents(small)<-"seurat_clusters"
-DoHeatmap(small, features = top10$gene,label=T) + NoLegend()
-DotPlot(Tumor, features = unique(top10$gene),cluster.idents = T) + NoLegend()+RotatedAxis()
-VlnPlot(Tumor,features=c("LEFTY1","ONECUT2"))+NoLegend()
-DoHeatmap(small, features = toppval$gene,label=T) + NoLegend()
-
-# Add New Basal/Classical Signatures
-#==========================================
-Idents(Tumor)<-"seurat_clusters"
-fullmarkers <- FindMarkers(Tumor,min.pct = 0.1,min.diff.pct = 0.1,test.use = "MAST",only.pos = F,ident.1 = 3,ident.2=4)
-fullmarkers$gene<-rownames(fullmarkers)
-gene_lists$Oh.Classical<-subset(fullmarkers,avg_log2FC>0)$gene
-gene_lists$Oh.Basal<-subset(fullmarkers,avg_log2FC<0)$gene
-x<-fullmarkers %>%arrange(desc(avg_log2FC)) %>%top_n(n = 100, wt = avg_log2FC)
-y<-fullmarkers %>%arrange(desc(-avg_log2FC)) %>%top_n(n = 100, wt = avg_log2FC)
-
-fullmarkers %>% top_n(n = -100, wt = avg_log2FC)
-gene_lists$Oh.Basal<-subset(markers,cluster %in%1)$gene
-gene_lists$Oh.Classical<-subset(markers,cluster %in%0)$gene
-#==========================================
-
-DimPlot(small,label=T,group.by = "CellType2")
-FeatureScatter(Tumor,group.by = "CellType2",feature1 = "RaghavanBasal",feature2 = "RaghavanClassical",pt.size = 0.5,jitter=T)
-FeatureScatter(small,group.by = "seurat_clusters",feature1 = "Moffitt.F6_BasalLike.top100",feature2 = "Moffitt.F8_Classical.top100")
-FeatureScatter(small,group.by = "CellType2",feature1 = "Moffitt.Basal.25",feature2 = "Moffitt.Classical.25",slot = "count")
-#=====================================
-new.cluster.ids <- 
- c( "LEFTY.Duct",#2
-    "HSP.Duct",#4==HSP, heat shock
-    "EMT.Duct",#5
-    "Acinar",#3======
-    "Normal.Duct",#0
-    "Neoplastic"#1
-)
-
-names(new.cluster.ids) <- levels(Epi)
-Epi <- RenameIdents(Epi, new.cluster.ids)
-Epi$CellType2<-Idents(Epi)
-```
-
-
-# Tumor Trajectory Monocle 3
-```{r}
-library(monocle3)
-library(SeuratWrappers)
-#Idents(full)<-
-#sub<-subset(Normal,downsample=1000)
-erythroid.cds <- as.cell_data_set(Tumor)
-erythroid.cds <- cluster_cells(cds = erythroid.cds, reduction_method = "UMAP")#,resolution = 0.01,k = 40)
-#erythroid.cds@clusters$UMAP<-sub$seurat_clusters
-#erythroid.cds@colData$cluster<-erythroid.cds@colData$seurat_clusters
-erythroid.cds <- preprocess_cds(erythroid.cds, num_dim = 10,norm_method = "none")
-erythroid.cds <- align_cds(erythroid.cds, alignment_group = "Dataset")
-erythroid.cds <- reduce_dimension(erythroid.cds,umap.min_dist = 0.3,umap.n_neighbors = 300)
-
-## Step 4: Cluster the cells
-erythroid.cds <- cluster_cells(erythroid.cds)
-erythroid.cds <- learn_graph(erythroid.cds, use_partition = TRUE,close_loop = F)
-erythroid.cds<-order_cells(erythroid.cds)
-
-plot_cells(
-  cds = erythroid.cds,
-  color_cells_by = "pseudotime",
-  show_trajectory_graph = TRUE
-)
-plot_cells(
-  cds = erythroid.cds,
-  color_cells_by = "CellType2",
-  show_trajectory_graph = TRUE
-)
-Tumor <- AddMetaData(
-  object = Tumor,
-  metadata = erythroid.cds@principal_graph_aux@listData$UMAP$pseudotime,
-  col.name = "Erythroid"
-)
-FeaturePlot(Tumor, c("Erythroid"), pt.size = 0.1) & scale_color_viridis_c()
-
-
-
-AFD_genes <- c("KRT17","TFF3","OLFM4","MUC1")
-
-AFD_lineage_cds <- erythroid.cds[rownames(erythroid.cds) %in% AFD_genes,
-                       colData(erythroid.cds)$CellType2 %in% c("Neoplastic","Metaplastic","Normal.Duct")]
-plot_genes_in_pseudotime(AFD_lineage_cds,
-                         color_cells_by="CellType2",
-                         min_expr=0.5,)
-```
-#============================================
-
-
-#>> Tumor GSEA
-```{r}
-library(clusterProfiler)
-
-source('/premiumDisk/khoh/Github/scTME/R/convert_symbol_entrez.R', echo=TRUE)
-
-Idents(Tumor)<-"CellType2"
-fullmarkers <- FindAllMarkers(Tumor,min.pct = 0.1,min.diff.pct = 0.1,test.use = "MAST",only.pos = F)
-#=========================
-gsea<-NULL
-for (i in unique(Tumor$CellType2)){
-c0<-  fullmarkers[fullmarkers$cluster%in%i,]%>% arrange(desc(avg_log2FC))
-gsea[[i]]<-convert_symbol_entrez(c0$gene)
-}
-c0<-fullmarkers[fullmarkers$cluster%in%0,]%>% arrange(desc(avg_log2FC))
-gsea$c0<-convert_symbol_entrez(c0$gene)
-#===================================
-c1<-fullmarkers[fullmarkers$cluster%in%1,]%>% arrange(desc(avg_log2FC))
-gsea$c1<-convert_symbol_entrez(c1$gene)
-#=============================
-c2<-fullmarkers[fullmarkers$cluster%in%2,]%>% arrange(desc(avg_log2FC))
-gsea$c2<-convert_symbol_entrez(c2$gene)
-#==================================
-c3<-fullmarkers[fullmarkers$cluster%in%3,]%>% arrange(desc(avg_log2FC))
-gsea$c3<-convert_symbol_entrez(c3$gene)
-#============================================
-c4<-fullmarkers[fullmarkers$cluster%in%4,]%>% arrange(desc(avg_log2FC))
-gsea$c4<-convert_symbol_entrez(c4$gene)
-#=========================
-c5<-fullmarkers[fullmarkers$cluster%in%5,]%>% arrange(desc(avg_log2FC))
-gsea$c5<-convert_symbol_entrez(c5$gene)
-#=========================================
-ck <- compareCluster(geneCluster = gsea, fun = "enrichKEGG")
-dotplot(ck,showCategory=20)
-ck <- compareCluster(geneCluster = gsea, fun = "groupGO",OrgDb="org.Hs.eg.db",ont="MF")
-dotplot(ck,showCategory=20)
-ck <- compareCluster(geneCluster = gsea, fun = "groupGO",OrgDb="org.Hs.eg.db",ont="BP")
-dotplot(ck,showCategory=20)
-ck <- compareCluster(geneCluster = gsea, fun = "enrichGO",OrgDb="org.Hs.eg.db")
-dotplot(ck,showCategory=20)
-
-```
-
-
-#>> Tumor gganimate
-```{r}
-library(gganimate)
-library(gifski)
-library(ggalt)
-df<-neo@meta.data
-#df<-subset(df,Condition%in%"Tumor")
-#df<-subset(df,seurat_clusters%in%c(2,3))
-#df<-df[df$seurat_clusters]
-p <- ggplot(df, aes(x=Moffitt.F6_BasalLike.top250,Moffitt.F8_Classical.top250,color=seurat_clusters,alpha=0.8)) +  geom_point() +geom_density_2d()+
-  transition_states(
-    Patient,
-    transition_length = 5,
-    state_length = 10) + 
-  enter_fade() + 
-  exit_shrink() +
-  ease_aes('sine-in-out')+labs(title = "Patient: {closest_state}",x = "Basal-like Score", y = "Classical Score") 
-#+geom_encircle(expand=0)+ theme_bw()
-animate(p, duration = 30, fps = 10, width = 500, height = 400, renderer = gifski_renderer())
-#anim_save("TumorScore.gif")
-#anim_save("filenamehere.gif", p)
-
-FeatureScatter(Epi,feature1="mesenchymal",feature2="Moffitt.F8_Classical.top25",smooth = F,pt.size = 0.1,group.by = "seurat_clusters")#facet_grid(rows=orig.ident)
-#pheatmap(samples[1:10])
-FeatureScatter(Epi,feature1="Moffitt.Basal.25",feature2="Moffitt.F8_Classical.top25",smooth = F,pt.size = 0.1,group.by = "seurat_clusters")#facet_grid(rows=orig.ident)
-#FeatureScatter(df,feature1="subtype1.25",feature2="subtype2.25",smooth = F,group.by = "orig.ident",pt.size=0.1)
-p <- ggplot(Tumor@meta.data,aes(x = Moffitt.F6_BasalLike.top25,
-                   y = Moffitt.F8_Classical.top25,
-                  # shape = orig.ident,
-                   color = CellType2))
-p <- p + geom_point(size=1)
-p <- p + stat_ellipse(aes(group = CellType2))
-p <- p + scale_color_manual(values=c("basal" = "orange","classical" = "blue", "NA" ="black"))
-print(p)
-```
-
-
-Load Meta
-```{r}
-
-#==========================================
-
-sampInfo<-Epi@meta.data
-sampInfo$orig.ident
-#Merge with sampInfo by common 'orig.ident'
-df<-merge(meta,sampInfo,by="orig.ident",all.y=T)
-head(df)
-#==========================================
-sampInfo$barcode<-rownames(sampInfo)
-# Order added 
-df<-df[match(sampInfo$orig.ident,df$orig.ident),]
-sub@meta.data<-as.data.frame(cbind(sampInfo,df))
-#==========================================
-beepr::beep(1)
-DefaultAssay(sub)<-"RNA"
-sub<-subset(sub,Condition%in%"Tumor")
-full.split <- SplitObject(sub, split.by = "orig.ident")
-
-```
-
-#>> Epithelium Pseudobulk + Calculate Gene Signatures
-```{r}
-source('/premDisk/khoh/Github/scTME/R/pseudobulk_score.R', echo=TRUE)
-source('/premDisk/khoh/Github/scTME/R/pseudobulk.R', echo=TRUE)
-newdf<-pseudobulk(neo2)
-output<-pseudobulk_score(newdf)
-samples<-output[[1]]
-genes<-output[[2]]
-expression<-output[[3]]
-samplesToPlot <- which((!samples$note %in% "OK"))
-
-samples$MT<-"Classical"
-x<-samples$Patient%in%c("peng_T12","peng_T11","peng_T16","peng_T19","PDAC1","peng_T21","peng_T23","peng_T8","peng_T9","peng_T7")
-samples$MT[x]<-"Basal"
-x<-samples$Patient%in%c("peng_T5","PDAC2","peng_T13","peng_T22","peng_T15")
-samples$MT[x]<-"Mixed"
-table(samples$MT)
-
-
-samples$MS<-"Normal"
-x<-samples$Patient%in%c("peng_T6","peng_T4","peng_T3","peng_T24","peng_T2","peng_T13","peng_T14","peng_T22","peng_T16","peng_T8","peng_T15","peng_T18")
-samples$MS[x]<-"Intermediate"
-x<-samples$Patient%in%c("PDAC1","peng_T17","peng_T21","peng_T23","peng_T11","peng_T9","PDAC2")
-samples$MS[x]<-"Activated"
-```
-
-
-```{r}
-subtypes<-create.classif(dat=expression,
-                         fit=pdac::Moffitt_classifier_2019$fit,
-                         classifier=pdac::Moffitt_classifier_2019)
-samples$singleSampleTumor <- subtypes$predprob[,1,drop=TRUE]
-
-p <- ggplot(data = samples)
-p <- p + geom_histogram(aes(x=singleSampleTumor),
-                        breaks = seq(from = 0,to = 1,length.out = 31),
-                        color = "black",
-                        fill = colorRampPalette(c("blue","white","orange"))(30))
-p <- p
-print(p)
-p<-ggplot(samples, aes(RaghavanBasal, RaghavanClassical,label=Patient)) +
-  geom_point(size=4,aes(color = RaghavanIntermediate), size = 1,alpha=0.5)+RotatedAxis()+NoLegend()#+geom_label()
-print(p)
-#========================================
-p<-ggplot(samples, aes(Moffitt.F6_BasalLike.top25, Moffitt.F8_Classical.top25,label=Patient)) +geom_text_repel()+
-  geom_point(aes(color = Patient), size = 3,alpha=0.5)+RotatedAxis()+NoLegend()
-print(p)
-```
-
-
-#>> Classify Basal/Classical
-```{r, fig.width=3, fig.height=4, message=FALSE, warning=FALSE, echo=FALSE}
-library(pdac)
-#select samples and genes
-#samplesToPlot <- which((!samples$note %in% "OK"))
-genesToPlot <- c(which(rownames(expression) %in% gene_lists$Moffitt.F6_BasalLike.top100),
-                 which(rownames(expression) %in% gene_lists$Moffitt.F8_Classical.top100))
-
-# do clustering and make semiautomatic calls
-sampletree <- ConsensusClusterPlus::ConsensusClusterPlus(d = t(scale(scale=FALSE,center=TRUE,        x = t(as.matrix(expression[genesToPlot,])))),
-                                                         seed = 1234,
-                                                         pFeature = 0.9,
-                                                         pItem = 0.9,
-                                                         maxK = 3,
-                                                         reps=500,
-                                                         distance="pearson",
-                                                         clusterAlg="hc")[[2]]$consensusTree
-tmp.cluster <- c("basal","classical")[cutree(tree = sampletree, k = 2)]
-samples$MT <- factor("NA",levels = c("basal","classical","NA"))
-samples$MT[samplesToPlot] <- tmp.cluster
-table(samples$MT)
-```
-
-#>> Tumor Heatmap
-```{r, fig.width=8, fig.height=10, message=FALSE, warning=FALSE, echo=FALSE}
-#===========================================================
-#genes1<-gene_lists[c("Moffitt.F6_BasalLike.top25","RaghavanBasal","RaghavanIntermediate","Moffitt.F8_Classical.top25","RaghavanClassical")]
-#genes1$Moffitt.F6_BasalLike.top25<-genes1$Moffitt.F6_BasalLike.top25[-18]
-#genes1<-gene_lists[c("Califano_Morpho","Califano_Lineage")]
-#genes1<-gene_lists[c("Moffitt.F6_BasalLike.top25","Moffitt.F8_Classical.top25")]
-resSig <- subset(res, padj < 0.1&abs(log2FoldChange)>0.25)
-resSig$SYMBOL<-rownames(resSig)
-resSig<-subset(resSig,SYMBOL%in%c(gene_lists$secretome))
-#resSig<-subset(resSig,SYMBOL%in%c(gene_lists$ecm,gene_lists$contact))
-#resSig<-subset(resSig,SYMBOL%in%c(gene_lists$contact))
-
-resSig<-data.frame(resSig@listData)
-y <- mutate(resSig, ordering = abs(log2FoldChange)) %>%
-        arrange(desc(ordering)) %>%top_n(60)
-genes1<-y$SYMBOL
-genesToPlot<-which(rownames(expression) %in% unlist(genes1))
-these.symbols<-genes$SYMBOLS[genesToPlot]
-geneOrder=numeric(length(these.symbols))
-for (i in 1:length(genes1)){
-print(i)
-geneOrder=geneOrder + (these.symbols %in% genes1[[i]])*(2^i)
-}
-geneOrder<-order(geneOrder)
-
-RowSideColors <- getSideColors(
-  sampInfo = genes,
-
-  sampleTracks = c("Moffitt.F6_BasalLike.top25",
-                   "ecm",
-                   "secretome",
-                   "contact"
-                 
-                 ),
-  colorlists = list(c("white","orange"),
-                     c("white","blue"),
-                     c("white","blue"),
-                    c("white","green")
-                   
-                    ) , drop.levels = FALSE)
-ColSideColors <- getSideColors(
-  sampInfo = samples,
-  sampleTracks = c( #"names.full.split.",
-                    "Moffitt.F6_BasalLike.top25",
-                    "Moffitt.F8_Classical.top25",
-                    "MS",
-                    "MT"
-
-
-              ),
-
-                   
-  colorlists = list( #c("red","yellow","green","blue","pink", "purple", "gray", "black", "brown"),
-                        c("white","orange"),
-                      c("white","blue"),
-                      c("brown","lightblue","purple"),
-                      c("orange","blue")
-
-                   ))
-  
-#===========================================================
-# This is the sample track on top that you can show different metadata attributes or scores for gene signatures in your gene_liists. Again, # of Items has to match the color. For multiple factors like Patient ID, You can set 
-#===========================================================
-# color scheme for heat map
-myPalette <- colorRampPalette(c("darkblue","blue", "white", "red","darkred"))(n = 299) 
-#===========================================================
-#samplesToPlot <- which((!samples$note %in% "OK"))
-# do clustering and make semiautomatic calls
-sampletree <- ConsensusClusterPlus::ConsensusClusterPlus(d = t(scale(scale=FALSE,center=TRUE,
-                                                                     x = t(as.matrix(expression[genesToPlot,samplesToPlot])))),
-                                                         seed = 1234,
-                                                         pFeature = 0.9,
-                                                         pItem = 0.9,
-                                                         maxK = 3,
-                                                         reps=500,
-                                                         distance="spearman",
-                                                         clusterAlg="hc")[[2]]$consensusTree
-#plot the heatmap
-#km <- kmeans((scale(t(expression[genestoplot,]))), 2)
-#rowmydata<-as.matrix((newdf[genesToPlot,samplesToPlot]))
-#rkm <- kmeans(t(scale(t(rowmydata))), 2)
-heatmap.3(as.matrix(expression[genesToPlot,samplesToPlot]), 
-  #Rowv=convert_kmeans_to_dendrogram(rkm$cluster),
-Rowv=TRUE,#
-# Rowv=convert_order_to_dendrogram(geneOrder),
- #distfun = function(x) dist(x,method = 'euclidean'),
- distfun=function(x) {as.dist((1-cor(t(x)))/2)},
-#Colv=TRUE,
-#Colv=as.dendrogram(sampletree),
-Colv=as.dendrogram(neosampletree),
-  #Colv=convert_kmeans_to_dendrogram(km$cluster),
-  dendrogram = "both",
-  trace="none",
-  margins =c(5,5),
-  labRow = genes[genesToPlot,"gene_short_name"],
-  labCol = samples$rna_match_id[samplesToPlot],
-  col=myPalette,breaks = seq(from = -3,to  = 3, length.out = length(myPalette)+1),
-  scale=c("row"),
-  cexRow = 0.8,
-  RowSideColors = t(RowSideColors$SideColors[genesToPlot,]),
-  RowSideColorsSize = dim(RowSideColors$SideColors)[2]*1.5,
-  ColSideColors = ColSideColors$SideColors[samplesToPlot,],
-  ColSideColorsSize = dim(ColSideColors$SideColors)[2]*1,
-  lwid = c(1,5),lhei = c(1,5))
-
-#neosampletree<-sampletree
-#===========================================================
-```
-
-
-# Monocle 3
-```{r}
-library(monocle3)
-library(SeuratWrappers)
-#Idents(full)<-
-sub<-subset(Tumor,downsample=1000)
-erythroid.cds <- as.cell_data_set(Tumor)
-erythroid.cds <- cluster_cells(cds = erythroid.cds, reduction_method = "UMAP")#,resolution = 0.01,k = 40)
-#erythroid.cds@clusters$UMAP<-sub$seurat_clusters
-#erythroid.cds@colData$cluster<-erythroid.cds@colData$seurat_clusters
-erythroid.cds <- learn_graph(erythroid.cds, use_partition = TRUE,close_loop = T)
-erythroid.cds<-order_cells(erythroid.cds)
-plot_cells(
-  cds = erythroid.cds,
-  color_cells_by = "pseudotime",
-  show_trajectory_graph = TRUE
-)
-plot_cells(
-  cds = erythroid.cds,
-  color_cells_by = "cluster",
-  show_trajectory_graph = TRUE
-)
-sub <- AddMetaData(
-  object = sub,
-  metadata = erythroid.cds@principal_graph_aux@listData$UMAP$pseudotime,
-  col.name = "Erythroid"
-)
-FeaturePlot(sub, c("Erythroid"), pt.size = 0.1) & scale_color_viridis_c()
-
-```

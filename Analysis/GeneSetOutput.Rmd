@@ -1,0 +1,423 @@
+---
+title: "GeneSetOutput"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Packages
+```{r}
+setwd("/premDisk/khoh/Github/scTME/data/CellType2GSEA")
+GO_0140375_Immune <-read.table("/premDisk/khoh/Github/scTME/data/GO_0140375_Immune.txt", quote="\"", comment.char="")
+kegg_cytokine <- readr::read_csv("/premDisk/khoh/Github/scTME/data/kegg_cytokine.txt",    skip = 1)
+cyto<-unique(c(kegg_cytokine$`> Cytokine-cytokine receptor interaction`,GO_0140375_Immune$V1))
+tf<-read.csv("/premiumDisk/khoh/Github/scTME/data/TF_genes.txt",header = F)
+tf<-tf$V1
+
+#Load CAMs Genes
+cam<-read.csv("/premiumDisk/khoh/Github/scTME/data/KEGG_CAM.txt",header = F)
+cam<-cam$V1
+
+
+library(CellChat)  
+CellChatDB<-CellChat::CellChatDB.human
+
+sort(CellChatDB$interaction$interaction_name)
+secretome<-c(CellChatDB$interaction$interaction_name[CellChatDB$interaction$annotation%in%"Secreted Signaling"],
+CellChatDB$interaction$interaction_name[CellChatDB$interaction$annotation%in%"Secreted Signaling"])
+secretome<-unique(unlist(strsplit(secretome, "_", 2)))
+
+contact<-c(CellChatDB$interaction$interaction_name[CellChatDB$interaction$annotation%in%"Cell-Cell Contact"],
+CellChatDB$interaction$interaction_name[CellChatDB$interaction$annotation%in%"Cell-Cell Contact"])
+contact<-unique(unlist(strsplit(contact, "_", 2)))
+
+ecm<-c(CellChatDB$interaction$interaction_name[CellChatDB$interaction$annotation%in%"ECM-Receptor"],
+CellChatDB$interaction$interaction_name[CellChatDB$interaction$annotation%in%"ECM-Receptor"])
+ecm<-unique(unlist(strsplit(ecm, "_", 2)))
+```
+
+#>> Myeloid CellType2 GSEA - Save Results
+```{r}
+library(clusterProfiler)
+library(ReactomePA)
+source('/premDisk/khoh/Github/scTME/R/convert_symbol_entrez.R', echo=TRUE)
+#=========================
+gsea<-NULL
+Idents(Myeloid2)<-"CellType2"
+fullmarkers <- FindAllMarkers(Myeloid2,test.use = "MAST",only.pos = T)
+#=========================
+gsea<-NULL
+for (i in unique(Myeloid2$CellType2)){
+c0<-  fullmarkers[fullmarkers$cluster%in%i,]%>% arrange(desc(avg_log2FC))
+gsea[[i]]<-convert_symbol_entrez(c0$gene)
+}
+#=========================
+ck1 <- compareCluster(geneCluster = gsea, fun = "enrichKEGG")
+dotplot(ck1,showCategory=5)
+gsea.gene <- ck1 %>% group_by(Cluster) %>% top_n(n = 40, wt = -log10(p.adjust))
+p1<-ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+write.csv(gsea.gene , file = "Myeloid.KEGG.csv", row.names=FALSE)
+#=========================
+ck2 <- compareCluster(geneCluster = gsea, fun = "enrichGO",OrgDb="org.Hs.eg.db",pvalueCutoff=0.05)
+dotplot(ck2,showCategory=10)
+gsea.gene <- ck2 %>% group_by(Cluster) %>% top_n(n = 40, wt = -log10(p.adjust))
+p2<-ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+write.csv(gsea.gene , file = "Myeloid.GO.csv", row.names=FALSE)
+#=========================
+ck3 <- compareCluster(geneCluster = gsea, fun = "enrichPathway",pvalueCutoff=0.05)
+dotplot(ck3,showCategory=10)
+gsea.gene <- ck3 %>% group_by(Cluster) %>% top_n(n = 40, wt = -log10(p.adjust))
+p3<-ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+write.csv(gsea.gene , file = "Myeloid.Pathway.csv", row.names=FALSE)
+
+
+cowplot::plot_grid(p1,p2,p3)
+```
+
+
+
+#================================================
+#>> Lymphocytes CellType2 GSEA - Save Results
+```{r}
+library(clusterProfiler)
+source('/premiumDisk/khoh/Github/scTME/R/convert_symbol_entrez.R', echo=TRUE)
+#=========================
+gsea<-NULL
+Idents(Lympho2)<-"CellType2"
+fullmarkers <- FindAllMarkers(Lympho2,test.use = "MAST",only.pos = T)
+#=========================
+gsea<-NULL
+for (i in unique(Lympho2$CellType2)){
+c0<-  fullmarkers[fullmarkers$cluster%in%i,]%>% arrange(desc(avg_log2FC))
+gsea[[i]]<-convert_symbol_entrez(c0$gene)
+}
+#=========================
+ck1 <- compareCluster(geneCluster = gsea, fun = "enrichKEGG")
+dotplot(ck1,showCategory=5)
+gsea.gene <- ck1 %>% group_by(Cluster) %>% top_n(n = 20, wt = -log10(p.adjust))
+p1<-ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+write.csv(gsea.gene , file = "Lymphocytes.KEGG.csv", row.names=FALSE)
+#=========================
+ck2 <- compareCluster(geneCluster = gsea, fun = "enrichGO",OrgDb="org.Hs.eg.db",pvalueCutoff=0.05)
+dotplot(ck2,showCategory=10)
+gsea.gene <- ck2 %>% group_by(Cluster) %>% top_n(n = 20, wt = -log10(p.adjust))
+p2<-ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+write.csv(gsea.gene , file = "Lymphocytes.GO.csv", row.names=FALSE)
+#=========================
+ck3 <- compareCluster(geneCluster = gsea, fun = "enrichPathway",pvalueCutoff=0.05)
+dotplot(ck3,showCategory=10)
+gsea.gene <- ck3 %>% group_by(Cluster) %>% top_n(n = 20, wt = -log10(p.adjust))
+p3<-ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+write.csv(gsea.gene , file = "Lymphocytes.Pathway.csv", row.names=FALSE)
+```
+
+#>> Stroma GSEA CellType2
+```{r}
+library(clusterProfiler)
+
+source('/premiumDisk/khoh/Github/scTME/R/convert_symbol_entrez.R', echo=TRUE)
+gsea<-NULL
+Idents(Stroma2)<-"CellType2"
+#fullmarkers <- FindAllMarkers(Stroma,min.pct = 0.25,min.diff.pct = 0.25,test.use = "MAST",only.pos = T)
+fullmarkers <- FindAllMarkers(Stroma2,test.use = "MAST",only.pos = T)
+#=========================
+gsea<-NULL
+for (i in unique(Stroma2$CellType2)){
+c0<-  fullmarkers[fullmarkers$cluster%in%i,]%>% arrange(desc(avg_log2FC))
+gsea[[i]]<-convert_symbol_entrez(c0$gene)
+}
+ck1 <- compareCluster(geneCluster = gsea, fun = "enrichKEGG")
+dotplot(ck1,showCategory=5)
+gsea.gene <- ck1 %>% group_by(Cluster) %>% top_n(n = 40, wt = -log10(p.adjust))
+p1<-ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+write.csv(gsea.gene , file = "Stroma.KEGG.csv", row.names=FALSE)
+#=========================
+ck2 <- compareCluster(geneCluster = gsea, fun = "enrichGO",OrgDb="org.Hs.eg.db",pvalueCutoff=0.05)
+dotplot(ck2,showCategory=10)
+gsea.gene <- ck2 %>% group_by(Cluster) %>% top_n(n = 40, wt = -log10(p.adjust))
+p2<-ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+write.csv(gsea.gene , file = "Stroma.GO.csv", row.names=FALSE)
+#=========================
+ck3 <- compareCluster(geneCluster = gsea, fun = "enrichPathway",pvalueCutoff=0.05)
+dotplot(ck3,showCategory=10)
+gsea.gene <- ck3 %>% group_by(Cluster) %>% top_n(n = 40, wt = -log10(p.adjust))
+p3<-ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+write.csv(gsea.gene , file = "Stroma.Pathway.csv", row.names=FALSE)
+#=========================================
+ck <- compareCluster(geneCluster = gsea, fun = "enrichKEGG")
+dotplot(ck,showCategory=5)
+ck <- compareCluster(geneCluster = gsea, fun = "enrichGO",OrgDb="org.Hs.eg.db")
+dotplot(ck,showCategory=5)
+ck <- compareCluster(geneCluster = gsea, fun = "enrichPathway")
+dotplot(ck,showCategory=5)
+```
+
+
+#>> Stroma2 Heatmap
+```{r}
+# Heatmap of TF
+#=====================================================
+resSig <- subset(res, padj < 0.01&abs(log2FoldChange)>0.8)
+resSig$SYMBOL<-rownames(resSig)
+resSig<-subset(resSig,SYMBOL%in%c(tf))
+resSig<-data.frame(resSig@listData)
+y <- mutate(resSig, ordering = abs(log2FoldChange)) %>%
+        arrange(desc(ordering)) %>%top_n(15)
+ggplot(resSig, aes(log2FoldChange, forcats::fct_reorder(SYMBOL, log2FoldChange), fill = padj), showCategory=(n*2)) + 
+      geom_bar(stat='identity') + 
+      scale_fill_continuous(low='red', high='blue', guide=guide_colorbar(reverse=TRUE)) + 
+      theme_minimal() + ylab(NULL)
+library(pheatmap)
+#out<-which(rownames(mRNA)%in%c("SOX4","SOX11","ZNF281","ZNF469","PRRX1","SMYD3","RUNX1","TWIST1","RORB","SALL4","WT1",""))
+out<-intersect(resSig$SYMBOL,secretome)
+
+#Heatmap
+
+pheatmap(assay(mRNA)[out,],scale="column",cluster_rows = T)
+#===========================================================
+genes1<-gene_lists[c("Moffitt.Normal.25","Moffitt.Activated.25")]
+genesToPlot<-which(rownames(ex) %in% unlist(genes1))
+these.symbols<-genes$SYMBOLS[genesToPlot]
+geneOrder=numeric(length(these.symbols))
+for (i in 1:length(genes1)){
+print(i)
+geneOrder=geneOrder + (these.symbols %in% genes1[[i]])*(2^i)
+}
+geneOrder<-order(geneOrder)
+
+RowSideColors <- getSideColors(
+  sampInfo = genes,
+
+  sampleTracks = c("Moffitt.Normal.25",
+                   "Moffitt.Activated.25"
+                 
+                 ),
+  colorlists = list(c("white","orange"),
+                     c("white","blue")
+                   
+                    ) , drop.levels = FALSE)
+ColSideColors <- getSideColors(
+  sampInfo = samples,
+  sampleTracks = c( #"names.full.split.",
+                    "Moffitt.F6_BasalLike.top100",
+                    "Moffitt.F8_Classical.top100",
+                    "MT"
+
+
+              ),
+
+                   
+  colorlists = list( #c("red","yellow","green","blue","pink", "purple", "gray", "black", "brown"),
+                        c("white","orange"),
+                      c("white","blue"),
+                      c("blue","orange")
+
+                   ))
+  
+#===========================================================
+# This is the sample track on top that you can show different metadata attributes or scores for gene signatures in your gene_liists. Again, # of Items has to match the color. For multiple factors like Patient ID, You can set 
+#===========================================================
+# color scheme for heat map
+myPalette <- colorRampPalette(c("darkblue","blue", "white", "red","darkred"))(n = 299) 
+#===========================================================
+#samplesToPlot <- which((!samples$note %in% "OK"))
+#genesToPlot <- c(which(genes$SYMBOL %in% gene_lists$Moffitt.F6_BasalLike.top250),
+               #  which(genes$SYMBOL %in% gene_lists$Moffitt.F8_Classical.top250))
+# do clustering and make semiautomatic calls
+sampletree <- ConsensusClusterPlus::ConsensusClusterPlus(d = t(scale(scale=FALSE,center=TRUE,
+                                                                     x = t(as.matrix(expression[genesToPlot,samplesToPlot])))),
+                                                         seed = 1234,
+                                                         pFeature = 0.8,
+                                                         pItem = 0.8,
+                                                         maxK = 3,
+                                                         reps=500,
+                                                         distance="pearson",
+                                                         clusterAlg="kmdist")[[2]]$consensusTree
+#plot the heatmap
+#km <- kmeans((scale(t(expression[genestoplot,]))), 2)
+rowmydata<-as.matrix((expression[genesToPlot,samplesToPlot]))
+rkm <- kmeans(t(scale(t(rowmydata))), 2)
+heatmap.3(as.matrix(expression[genesToPlot,]), 
+  #Rowv=convert_kmeans_to_dendrogram(rkm$cluster),
+Rowv=TRUE,
+ #Rowv=convert_order_to_dendrogram(geneOrder),
+ #distfun = function(x) dist(x,method = 'euclidean'),
+ distfun=function(x) {as.dist((1-cor(t(x)))/2)},
+#  Colv=TRUE,
+Colv=as.dendrogram(sampletree),
+  #Colv=convert_kmeans_to_dendrogram(km$cluster),
+  dendrogram = "both",
+  trace="none",
+  margins =c(6,6),
+  labRow = genes[genesToPlot,"gene_short_name"],
+  labCol = samples$rna_match_id[samplesToPlot],
+  col=myPalette,breaks = seq(from = -3,to  = 3, length.out = length(myPalette)+1),
+  scale=c("row"),
+  cexRow = 0.8,
+  RowSideColors = t(RowSideColors$SideColors[genesToPlot,]),
+  RowSideColorsSize = dim(RowSideColors$SideColors)[2]*1.5,
+  ColSideColors = ColSideColors$SideColors[samplesToPlot,],
+  ColSideColorsSize = dim(ColSideColors$SideColors)[2]*1,
+  lwid = c(1,5),lhei = c(1,5))
+#===========================================================
+```
+
+
+#>> Endo CellType2 GSEA - Save Results
+```{r}
+library(clusterProfiler)
+Endo <- readRDS("/premiumDisk/khoh/Endo_Subset2021.rds")
+source('/premiumDisk/khoh/Github/scTME/R/convert_symbol_entrez.R', echo=TRUE)
+#=========================
+gsea<-NULL
+Idents(Endo2)<-"CellType2"
+fullmarkers <- FindAllMarkers(Endo2,test.use = "MAST",only.pos = T)
+#=========================
+gsea<-NULL
+for (i in unique(Endo2$CellType2)){
+c0<-  fullmarkers[fullmarkers$cluster%in%i,]%>% arrange(desc(avg_log2FC))
+gsea[[i]]<-convert_symbol_entrez(c0$gene)
+}
+#=========================
+ck1 <- compareCluster(geneCluster = gsea, fun = "enrichKEGG")
+dotplot(ck1,showCategory=5)
+gsea.gene <- ck1 %>% group_by(Cluster) %>% top_n(n = 20, wt = -log10(p.adjust))
+p1<-ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+write.csv(gsea.gene , file = "Endo.KEGG.csv", row.names=FALSE)
+#=========================
+ck2 <- compareCluster(geneCluster = gsea, fun = "enrichGO",OrgDb="org.Hs.eg.db",pvalueCutoff=0.05)
+dotplot(ck2,showCategory=10)
+gsea.gene <- ck2 %>% group_by(Cluster) %>% top_n(n = 20, wt = -log10(p.adjust))
+p2<-ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+write.csv(gsea.gene , file = "Endo.GO.csv", row.names=FALSE)
+#=========================
+ck3 <- compareCluster(geneCluster = gsea, fun = "enrichPathway",pvalueCutoff=0.05)
+dotplot(ck3,showCategory=10)
+gsea.gene <- ck3 %>% group_by(Cluster) %>% top_n(n = 20, wt = -log10(p.adjust))
+p3<-ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+write.csv(gsea.gene , file = "Endo.Pathway.csv", row.names=FALSE)
+#=========================================
+#===========================================
+ck1@compareClusterResult$Class<-"KEGG"
+ck2@compareClusterResult$Class<-"GO"
+ck3@compareClusterResult$Class<-"Pathway"
+df<-rbind(ck1@compareClusterResult
+,ck2@compareClusterResult,ck3@compareClusterResult
+)
+gsea.gene <- df %>% group_by(Cluster) %>% top_n(n = 20, wt = Class)
+#==========================================================
+ggplot(gsea.gene,aes(x=Cluster,y=reorder(Description,log10(p.adjust))))+geom_point(aes(fill=log10(p.adjust)))+facet_wrap(~Class)
+
+ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+
+ggplot(gsea.gene,aes(x=Cluster,y=reorder(Description,Class)))+ geom_tile(aes(fill = -log10(p.adjust)))
+ck <- compareCluster(geneCluster = gsea, fun = "enrichKEGG")
+dotplot(ck,showCategory=10)
+#============================================================
+```
+
+
+# >>> Endo2 DESeq2 Plot
+```{r}
+#======================================
+ck1<-gsePathway(kegg_gene_list,
+               minGSSize = 10,
+               maxGSSize = 300,
+               pvalueCutoff = 0.05)
+dotplot(ck1,showCategory=40)
+ck1@result$type = "Activated"
+ck1@result$type[ck1@result$NES < 0] = "Normal"
+dotplot(ck1,showCategory=50)+facet_grid(.~type)
+gsea.gene1<-ck1[ck1@result$type%in%"Activated"]
+gsea.gene1 <- gsea.gene1 %>% top_n(n = 20, wt = NES)
+
+p1<-ggplot(gsea.gene1,aes(x=NES,y=reorder(Description,NES)))+   geom_segment( aes(size=5, xend=0, yend=reorder(Description,NES)), color="brown") +ggtitle("Activated")
+  
+gsea.gene2<-ck1[ck1@result$type%in%"Normal"]
+gsea.gene2 <- gsea.gene2 %>% top_n(n = 20, wt = NES)
+
+p2<-ggplot(gsea.gene2,aes(x=NES,y=reorder(Description,NES)))+ geom_segment( aes( size=5,xend=0, yend=reorder(Description,NES)), color="lightblue")+ggtitle("Normal") 
+cowplot::plot_grid(p1,p2,ncol = 1)
+#===============================================
+ck2<-gseKEGG(kegg_gene_list,pvalueCutoff = 0.05)
+dotplot(ck2,showCategory=40)
+ck2@result$type = "Activated"
+ck2@result$type[ck2@result$NES < 0] = "Normal"
+dotplot(ck2,showCategory=50)+facet_grid(.~type)
+#===============================================
+gsea.gene1<-ck2[ck2@result$type%in%"Activated"]
+gsea.gene1 <- gsea.gene1 %>% top_n(n = 20, wt = NES)
+
+p1<-ggplot(gsea.gene1,aes(x=NES,y=reorder(Description,NES)))+   geom_segment( aes(size=5, xend=0, yend=reorder(Description,NES)), color="brown") +ggtitle("Activated")
+#===============================================
+gsea.gene2<-ck2[ck2@result$type%in%"Normal"]
+gsea.gene2 <- gsea.gene2 %>% top_n(n = 20, wt = NES)
+
+p2<-ggplot(gsea.gene2,aes(x=NES,y=reorder(Description,NES)))+ geom_segment( aes( size=5,xend=0, yend=reorder(Description,-log10(p.adjust))), color="lightblue")+ggtitle("Normal")
+cowplot::plot_grid(p1,p2,ncol = 1)
+#===========================================================
+ck3<-gseGO(kegg_gene_list,
+          OrgDb = org.Hs.eg.db,
+               minGSSize = 20,
+               maxGSSize = 500,
+               pvalueCutoff = 0.05)
+dotplot(ck3,showCategory=40)
+ck3@result$type = "Activated"
+ck3@result$type[ck3@result$NES < 0] = "Normal"
+dotplot(ck3,showCategory=20)+facet_grid(.~type)
+#===========================================================
+gsea.gene1<-ck3[ck3@result$type%in%"Activated"]
+gsea.gene1 <- gsea.gene1 %>% top_n(n = 20, wt = -log10(p.adjust))
+
+p1<-ggplot(gsea.gene1,aes(x=NES,y=reorder(Description,NES)))+   geom_segment( aes(size=5, xend=0, yend=reorder(Description,NES)), color="brown") +ggtitle("Activated")
+  
+gsea.gene2<-ck3[ck3@result$type%in%"Normal"]
+gsea.gene2 <- gsea.gene2 %>% top_n(n = 20, wt = -log10(p.adjust))
+
+p2<-ggplot(gsea.gene2,aes(x=NES,y=reorder(Description,NES)))+ geom_segment( aes( size=5,xend=0, yend=reorder(Description,NES)), color="lightblue")+ggtitle("Normal")
+cowplot::plot_grid(p1,p2,ncol = 1)
+#======================
+```
+#================================================
+
+
+
+#>> Epi CellType2 GSEA - Save Results
+```{r}
+library(clusterProfiler)
+Tumor <- readRDS("/premDisk/khoh/Github/TumorSubset2021.rds")
+source('/premiumDisk/khoh/Github/scTME/R/convert_symbol_entrez.R', echo=TRUE)
+#=========================
+gsea<-NULL
+DefaultAssay(Tumor)<-"RNA"
+Idents(Tumor)<-"CellType2"
+table(Tumor$CellType2)
+fullmarkers <- FindAllMarkers(Tumor,test.use = "MAST",only.pos = T)
+#=========================
+gsea<-NULL
+for (i in unique(Tumor$CellType2)){
+c0<-  fullmarkers[fullmarkers$cluster%in%i,]%>% arrange(desc(avg_log2FC))
+gsea[[i]]<-convert_symbol_entrez(c0$gene)
+}
+#=========================
+ck1 <- compareCluster(geneCluster = gsea, fun = "enrichKEGG")
+dotplot(ck1,showCategory=5)
+gsea.gene <- ck1 %>% group_by(Cluster) %>% top_n(n = 40, wt = -log10(p.adjust))
+p1<-ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+write.csv(gsea.gene , file = "Epi.KEGG.csv", row.names=FALSE)
+#=========================
+ck2 <- compareCluster(geneCluster = gsea, fun = "enrichGO",OrgDb="org.Hs.eg.db",pvalueCutoff=0.05)
+dotplot(ck2,showCategory=10)
+gsea.gene <- ck2 %>% group_by(Cluster) %>% top_n(n = 40, wt = -log10(p.adjust))
+p2<-ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+write.csv(gsea.gene , file = "Epi.GO.csv", row.names=FALSE)
+#=========================
+ck3 <- compareCluster(geneCluster = gsea, fun = "enrichPathway",pvalueCutoff=0.05)
+dotplot(ck3,showCategory=10)
+gsea.gene <- ck3 %>% group_by(Cluster) %>% top_n(n = 40, wt = -log10(p.adjust))
+p3<-ggplot(gsea.gene,aes(x=Cluster,y=forcats::fct_inorder(Description)))+ geom_tile(aes(fill = -log10(p.adjust)))+scale_fill_gradient(low = "blue", high = "red")
+write.csv(gsea.gene , file = "Epi.Pathway.csv", row.names=FALSE)
+```
+
+
+
