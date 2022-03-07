@@ -17,7 +17,7 @@ Supplementary repository of data, analysis and code.
     * Table 3: Expanded gene signature table
     * Table 4: Dataset Metadata
 ***
-### 2). **Single Cell Classifier**
+### 3). **Single Cell Classifier**
     * Trained RandomForest Classifier (.rds)    
     * Vignette 
 ***   
