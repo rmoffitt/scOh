@@ -5,6 +5,8 @@ Supplementary repository of data, analysis and code.
 ***
 ### 1). **PDAC Atlas Data**   
     * Seurat Objects [Cell Type 1] (.rds)
+    - Stroma
+    - Myeloid
      
 ### 2). **Supplementary Tables**
     * Table 1: Subpopulation DEG Output 
