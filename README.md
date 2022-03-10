@@ -5,7 +5,8 @@ Supplementary repository of data, analysis and code.
 ***
 ### 1). **PDAC Atlas Data**   
     * Seurat Objects [Cell Type 1] (.rds)
-      - Stroma (PSC/CAF)
+      - Stroma (PSC/CAF) 
+      wget http://20.62.120.93/scRNA/Stroma_Subset2021.rds
       - Myeloid
       - Lymphocytes
       - Epithelium
