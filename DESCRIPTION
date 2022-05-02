@@ -7,9 +7,10 @@ Authors@R:
            role = c("aut", "cre"),
            email = "first.last@example.com",
            comment = c(ORCID = "YOUR-ORCID-ID"))
-Description: Data Repository for Single Cell PDAC Analysis (one paragraph).
+Description: Data Repository for Single Cell PDAC Analysis and associated single cell classifier codes and workflows.
 License: `use_mit_license()`
 Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.1.2
+Imports: EnrichmentBrowser, dplyr, data.table, Seurat 
