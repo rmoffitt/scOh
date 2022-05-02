@@ -1,20 +1,20 @@
-#'Seurat Object to CSV Conversion Wrapper
+#' Seurat Object to CSV Conversion Wrapper
 #'
-#'CSV Conversion Wrapper for Seurat Objects
-#'@param data_slot Choose which data slot to pull from. Default is (counts)
+#' CSV Conversion Wrapper for Seurat Objects
+#' @param data_slot Choose which data slot to pull from. Default is (counts)
 
-#'@return csv file output into working directory
-#'@examples
-#'seurat_to_csv(pbmc.seurat)
-#'@export
+#' @return csv file output into working directory
+#' 
+#' @examples
+#' seurat_to_csv(pbmc.seurat)
+#' 
+#' @export
 #'
-#'
-#'
+#' @import data.table
+#' @import Seurat
+#' @import dplyr
+#' 
 
-library(data.table)
-library(Seurat)
-library(dplyr)
-library(beepr)
 #=======================================================================
 seurat_to_csv <- function(seurat_object,
                           data_slot="counts",
@@ -38,5 +38,5 @@ write.csv(meta, file=meta_file, row.names = T, col.names = T)
 print("....Saved Meta Data as CSV....")
 print("....Outputs Complete....")
 #=======================================================================
-beep()
+# beep()
 }
