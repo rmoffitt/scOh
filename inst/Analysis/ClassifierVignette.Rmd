@@ -77,3 +77,6 @@ pancreas_merged@meta.data <- expMouse_2
 
 ```
 
+## Expected Output
+Vector containing predicted cell type classification and associated probability score.
+
