@@ -11,8 +11,10 @@ library(harmony)
 library(Nebulosa)
 library(biomaRt)
 library(dplyr)
-gene_lists <- readRDS("/premiumDisk/khoh/Github/scTME/data/gene_lists.rds")
-source('/premiumDisk/khoh/Github/scTME/R/score_sig.R', echo=TRUE)
+# gene_lists <- readRDS("~/scOh/data/gene_lists.rds")
+# save(gene_lists, file = "~/scOh/data/gene_lists.RData",compress = T)
+data("gene_lists")
+source('~/scOh/R/score_sig.R', echo=TRUE)
 ```
 
 #@ Endo 
