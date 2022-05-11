@@ -12,21 +12,20 @@ knitr::opts_chunk$set(collapse = T)
 library(singleCellNet)
 library(dplyr)
 library(Seurat)
+library(scOH)
 ```
 
 \newpage
 
 The following vignette is to aid in quickly implementing the scOh classifier. The scOh classifier was trained using the singleCellNet package. For a more detailed vignette on the functions and parameters of the single cell classifier architecture and functions, please refer to https://github.com/pcahan1/singleCellNet.  
 
-## Required Installation
+## Required Installations (should install on scOh install)
 
 ```{r eval = F}
-if (!require("singleCellNet")) {
-  devtools::install_github("pcahan1/singleCellNet")
-}
 library(singleCellNet)
 library(dplyr)
 library(Seurat)
+library(scOH)
 ```
 
 ## Quick Start
@@ -34,10 +33,11 @@ library(Seurat)
 First, load in the trained classifier and your data set to be labeled. For this vignette, we use the validation set from our submission. You may slot in any PDAC single cell set you'd like into this vignette, so long as you adjust lines 30-35.
 
 ```{r}
-# Load Classifier
-Classifier <- readRDS("~/scOh/data/PDAC_Tier1_Classifier_MouseOverlap5000.40pairs.rds")
+# Load Classifier, a list with three entries
+data("trainedClassifier", verbose = T)
 
-## If you need to, download the sample set. If not, please change lines 30-35 to point to your single cell dataset of choice.
+## If you need to, download the sample set using the following code. 
+## If not, please change lines 30-35 to point to your single cell dataset.
 # wget http://pdacr.bmi.stonybrook.edu/scRNA/classification_sampleset.RData
 
 # Load in data to classify from wherever you downloaded it
@@ -54,9 +54,14 @@ expMat <- ValidationSet@assays$RNA
 Once the scRNA data is loaded and represented as a matrix, scn_predict() will generate prediction probabilities for the 6 classes. 
 
 ```{r}
-nqRand = 2000 # The number of random profiles to generate for eval process. Upper limit = sample size of experiment 
-celltypePredictions <- scn_predict(Classifier[['cnProc']], expMat, nrand = nqRand)
+## Set number of random profiles to generate for eval process. 
+## Upper limit = sample size of experiment 
+nqRand = 2000 
 
+## Run your predictions as shown here.
+celltypePredictions <- scn_predict(Classifier[['cnProc']], # The classifier
+                                   expMat, # Expression values
+                                   nrand = nqRand)
 str(celltypePredictions)
 ```
 
@@ -65,7 +70,9 @@ str(celltypePredictions)
 The output of scn_predict() is a matrix with 7 rows (6 classes + 1 rand) and a number of columns equal to nqRand + number of input columns (here, 7 x 6,278). We now generate a vector of column groups for a heatmap to visualize the output of the prediction probabilities.
 
 ```{r}
-## Make list of column groups for the classifier output heatmap. Our validation dataset has a variety of ground truth cell type labels ($CellTtype) that we use here as column tracks.
+## Make list of column groups for the classifier output heatmap. 
+##Our validation dataset has a variety of ground truth 
+## cell type labels ($CellTtype) that we use here.
 sgrp = as.vector(sampInfo$CellType)
 names(sgrp) = as.vector(sampInfo$sample_name)
 
@@ -83,11 +90,19 @@ sc_hmClass(celltypePredictions, # The output of the prediction classifier
            font=8)
 ```
 
-Using the sc_violinClass() function, we see that fibroblasts (light pink) are called Stroma (bottom row) and T cells (grey) and called Lymphocytes (fourth row), along with other robust predictions of cell type.
+Using the sc_violinClass() function, we see that fibroblasts (light pink) are called Stroma (bottom row) and T cells (grey) are called Lymphocytes (fourth row), along with other robust predictions of cell type.
 
 ```{r, fig.width = 9, warning = F, message = F}
-sampInfo <- get_cate(classRes = celltypePredictions, sampTab = sampInfo, dLevel = "CellType", sid = "sample_name", nrand = nqRand)
-sc_violinClass(sampTab = sampInfo, classRes = celltypePredictions, sid = "sample_name", dLevel = "CellType", addRand = nqRand)
+sampInfo <- get_cate(classRes = celltypePredictions, 
+                     sampTab = sampInfo, 
+                     dLevel = "CellType", 
+                     sid = "sample_name", 
+                     nrand = nqRand)
+sc_violinClass(sampTab = sampInfo, 
+               classRes = celltypePredictions, 
+               sid = "sample_name", 
+               dLevel = "CellType", 
+               addRand = nqRand)
 ```
 
 
@@ -106,7 +121,8 @@ result <- result[-which(rownames(result)=="rand"), ]
 result_classi <- as.data.frame(t(result))
 
 ## Pick maximum result as the result of the Classifier. 
-result_classi$CellType_cs <- colnames(result_classi)[max.col(result_classi,ties.method="first")]
+result_classi$CellType_cs <- colnames(result_classi)[max.col(result_classi,
+                                                             ties.method="first")]
 result_classi$sample_name <- row.names(result_classi)
 
 ## Join prediction values and classification back into original Seurat Object
