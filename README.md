@@ -7,8 +7,8 @@ Abstract: Bulk analyses of pancreatic ductal adenocarcinoma (PDAC) samples are c
 Published Manuscript: https://www.nature.com/articles/s41467-023-40895-6
 
 ***
-### 1). **PDAC Atlas Data**   
-    * Seurat Objects [Cell Type 1] (.rds) [hosted on google drive](https://drive.google.com/drive/u/2/folders/1w46CX8D_MQiS45NEgXA1cuoM_qugSkuM)
+### 1). **PDAC Atlas Data**  [hosted on google drive](https://drive.google.com/drive/u/2/folders/1w46CX8D_MQiS45NEgXA1cuoM_qugSkuM)
+    * Seurat Objects [Cell Type 1] (.rds) 
       - Stroma (PSC/CAF) (4.1 Gb)
             Stroma_Subset2021.rds
       - Myeloid (2.8 Gb)
